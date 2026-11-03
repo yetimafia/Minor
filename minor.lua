@@ -140,6 +140,10 @@ if args[1] == "test" then
     print("   datapacks folder and run /reload.")
     print("   Check it with /datapack list")
   end
+  print("")
+  print("Picking the test trapdoor back up in 3s...")
+  print("(in a real dig, trapdoors stay put)")
+  sleep(3)
   turtle.select(trap)
   turtle.dig() -- take the test trapdoor back
   turtle.select(1)
