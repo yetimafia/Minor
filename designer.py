@@ -129,6 +129,13 @@ def shade(color, amount):
     return f"#{r:02x}{g:02x}{b:02x}"
 
 
+def blend(a, b, t):
+    """Mix colour a toward colour b by t (0..1)."""
+    ra, ga, ba = (int(a[i:i + 2], 16) for i in (1, 3, 5))
+    rb, gb, bb = (int(b[i:i + 2], 16) for i in (1, 3, 5))
+    return "#%02x%02x%02x" % (round(ra + (rb - ra) * t), round(ga + (gb - ga) * t), round(ba + (bb - ba) * t))
+
+
 def jitter(x, y, z):
     """Small fixed per-block colour variation so tiles look textured."""
     h = (x * 73856093) ^ (z * 19349663) ^ (y * 83492791)
@@ -151,6 +158,90 @@ class Design:
         self.L, self.W, self.H, self.grid = length, width, height, new
         sx, sy, sz = self.start
         self.start = (min(sx, length - 1), min(sy, height - 1), min(sz, width - 1))
+
+    def water_flow(self):
+        """Where the water buckets will end up flowing, Minecraft style.
+
+        Returns {(x, y, z): (level, falling)} for every block water reaches,
+        not counting the bucket spots themselves. level 1..7 = how far from
+        the source (7 is the thin edge), falling = a full column pouring down.
+        Assumes everything outside the dug area is solid rock, closed
+        trapdoors block water, and the turtle is parked on its start block.
+        """
+        import heapq
+        L, W, H = self.L, self.W, self.H
+        sx, sy, sz = self.start
+        grid = self.grid
+
+        def open_(x, y, z):
+            if not (0 <= x < L and 0 <= y < H and 0 <= z < W):
+                return False
+            if (x, y, z) == (sx, sy, sz) or (x, y, z) == (sx - 1, sy, sz):
+                return False  # turtle parks here / chest
+            return grid[y][x][z] not in (KEEP, TRAP)
+
+        def hole_below(x, y, z):
+            return open_(x, y - 1, z)
+
+        dirs = ((1, 0), (-1, 0), (0, 1), (0, -1))
+
+        def slope_distance(x, y, z, came_from):
+            """Steps (1-4) to the nearest drop going this way, or None."""
+            seen = {(x, z), came_from}
+            frontier = [(x, z)]
+            for dist in range(1, 5):
+                nxt = []
+                for (cx, cz) in frontier:
+                    if hole_below(cx, y, cz):
+                        return dist
+                    for dx, dz in dirs:
+                        n = (cx + dx, cz + dz)
+                        if n not in seen and open_(n[0], y, n[1]):
+                            seen.add(n)
+                            nxt.append(n)
+                frontier = nxt
+                if not frontier:
+                    break
+            return None
+
+        level, falling, heap = {}, set(), []
+        sources = set()
+        for y in range(H):
+            for x in range(L):
+                for z in range(W):
+                    if grid[y][x][z] == WATER and open_(x, y, z):
+                        sources.add((x, y, z))
+                        level[(x, y, z)] = 0
+                        heap.append((0, x, y, z))
+        heapq.heapify(heap)
+        while heap:
+            l, x, y, z = heapq.heappop(heap)
+            if level.get((x, y, z), 99) < l:
+                continue
+            if open_(x, y - 1, z):  # water pours straight down first
+                b = (x, y - 1, z)
+                if level.get(b, 99) > 0:
+                    level[b] = 0
+                    falling.add(b)
+                    heapq.heappush(heap, (0, x, y - 1, z))
+                continue
+            if l >= 7:
+                continue
+            # flows only toward the closest drop within 4 blocks, if there is one
+            options = []
+            for dx, dz in dirs:
+                nx, nz = x + dx, z + dz
+                if open_(nx, y, nz):
+                    options.append((slope_distance(nx, y, nz, (x, z)), nx, nz))
+            dists = [o[0] for o in options if o[0] is not None]
+            best = min(dists) if dists else None
+            for dist, nx, nz in options:
+                if best is not None and dist != best:
+                    continue
+                if level.get((nx, y, nz), 99) > l + 1:
+                    level[(nx, y, nz)] = l + 1
+                    heapq.heappush(heap, (l + 1, nx, y, nz))
+        return {c: (lv, c in falling) for c, lv in level.items() if c not in sources}
 
     def count_items(self):
         water = traps = 0
@@ -260,6 +351,8 @@ class App:
         self.tool = tk.StringVar(value="dig")
         self.spacing = tk.IntVar(value=8)
         self.ghost = tk.StringVar(value="below")
+        self.show_flow = tk.BooleanVar(value=True)
+        self.flow = {}
         self.settings = load_settings()
         self.uploaded = {}  # design name -> commit sha of last upload
         self.command = tk.StringVar(value="")
@@ -305,6 +398,8 @@ class App:
         self.ghost_hint = ttk.Label(lay, text="", foreground="#777")
         self.ghost_hint.pack(anchor="w")
         ttk.Label(lay, text="(G key switches)", foreground="#999").pack(anchor="w")
+        ttk.Checkbutton(lay, text="Show water flow", variable=self.show_flow,
+                        command=self.redraw).pack(anchor="w", pady=(4, 0))
 
         tools = ttk.LabelFrame(side_a, text="Tool (left mouse)", padding=6)
         tools.pack(fill="x", pady=(0, 6))
@@ -380,7 +475,7 @@ class App:
 
         bottom = ttk.Frame(self.root, padding=6)
         bottom.pack(fill="x")
-        self.stats = ttk.Label(bottom, text="")
+        self.stats = ttk.Label(bottom, text="", wraplength=560, justify="left")
         self.stats.pack(side="left")
         ttk.Button(bottom, text="Save", command=self.save).pack(side="right", padx=4)
         ttk.Button(bottom, text="Open...", command=self.open).pack(side="right")
@@ -434,6 +529,12 @@ class App:
                 key = "above"
         base, hi, lo = STYLE[key]
         j = jitter(x, y, z)
+        flow = self.flow.get((x, y, z)) if self.show_flow.get() else None
+        if flow and v != WATER:
+            lvl, falling = flow
+            depth = 1.0 if falling else (8 - lvl) / 8.0      # full near the bucket, thin at the edge
+            mix = 0.25 + 0.5 * depth
+            base, hi, lo = (blend(c, "#3f7fd6", mix) for c in (base, hi, lo))
         return shade(base, j), shade(hi, j // 2), shade(lo, j // 2), v
 
     def draw_cell(self, x, z):
@@ -504,6 +605,7 @@ class App:
 
     def redraw(self):
         d, y = self.d, self.layer
+        self.flow = d.water_flow() if self.show_flow.get() else {}
         self.canvas.delete("marker")
         for (x, z) in self.rects:
             self.draw_cell(x, z)
@@ -544,20 +646,26 @@ class App:
         dig, torches = self.d.count()
         fuel = int(dig / 2.5) + self.d.L + self.d.W + self.d.H
         water, traps = self.d.count_items()
-        text = f"{dig} blocks to dig   |   {torches} torches   |   ~{fuel} fuel (~{fuel // 80 + 1} coal)"
+        text = f"{dig} blocks to dig  |  {torches} torches  |  ~{fuel} fuel (~{fuel // 80 + 1} coal)"
         if water or traps:
-            text += f"   |   at the end: {traps} trapdoors, {water} water buckets"
+            text += f"  |  at the end: {traps} trapdoors, {water} water buckets"
+        if water and self.show_flow.get():
+            d = self.d
+            text += f"  |  water spreads to {len(self.flow)} more blocks"
+            washed = sum(1 for (x, y, z) in self.flow if d.grid[y][x][z] == TORCH)
+            if washed:
+                text += f"  |  ⚠ water will wash away {washed} torches"
         bad = self.d.unreachable()
         if bad:
-            text += f"   |   ⚠ {bad} blocks not connected to the start (turtle will tunnel to them)"
+            text += f"  |  ⚠ {bad} blocks not connected to the start (turtle will tunnel to them)"
         d = self.d
         stuck = sum(1 for y in range(d.H) for x in range(d.L) for z in range(d.W)
                     if d.grid[y][x][z] == TORCH and not (y + 1 < d.H and d.grid[y + 1][x][z]))
         if stuck:
-            text += f"   |   ⚠ {stuck} torches have no dug space above (turtle places from above - they'll be skipped)"
+            text += f"  |  ⚠ {stuck} torches have no dug space above (turtle places from above - they'll be skipped)"
         sx, sy, sz = self.d.start
         if sx - 1 >= 0 and self.d.grid[sy][sx - 1][sz]:
-            text += "   |   ⚠ chest spot is marked to dig (it'll be skipped)"
+            text += "  |  ⚠ chest spot is marked to dig (it'll be skipped)"
         self.stats.config(text=text)
 
     # ---- mouse --------------------------------------------------------
@@ -965,6 +1073,8 @@ class App:
         name = self.name.get().strip() or "design"
         page = (VIEWER_HTML
                 .replace("__DESIGN__", json.dumps(self.d.to_text()).replace("</", "<\\/"))
+                .replace("__FLOW__", json.dumps([[x, y, z, lv, int(f)] for (x, y, z), (lv, f)
+                                                 in self.d.water_flow().items()]))
                 .replace("__NAME__", htmllib.escape(name)))
         os.makedirs(DESIGN_DIR, exist_ok=True)
         path = os.path.join(DESIGN_DIR, "_3d_view.html")
@@ -1280,6 +1390,7 @@ VIEWER_HTML = r'''<!DOCTYPE html>
     <label><input type="checkbox" id="xray"> See-through</label>
     <label><input type="checkbox" id="torches" checked> Torches</label>
     <label><input type="checkbox" id="items" checked> Trapdoors &amp; water</label>
+    <label><input type="checkbox" id="flow" checked> Water flow</label>
     <label><input type="checkbox" id="turtle" checked> Turtle &amp; chest</label>
     <label><input type="checkbox" id="grid" checked> Ground grid</label>
   </div>
@@ -1309,6 +1420,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 window.__minorStarted = true;
 
 const DESIGN = __DESIGN__;
+const FLOW = __FLOW__;   // [x, y, z, level 1-7, falling]
 
 // ---------------------------------------------------------------- parse
 const KEEP = 0, DIG = 1, TORCH = 2, WATER = 3, TRAP = 4;
@@ -1394,6 +1506,9 @@ const trapGeo = new THREE.BoxGeometry(0.96, 0.19, 0.96);
 const trapMat = new THREE.MeshLambertMaterial({ color: 0x9c6b38 });
 let itemGroup = new THREE.Group();
 scene.add(itemGroup);
+const flowMat = new THREE.MeshLambertMaterial({ color: 0x5c98ea, transparent: true, opacity: 0.42, depthWrite: false });
+const unitBox = new THREE.BoxGeometry(1, 1, 1);
+let flowMesh = null;
 
 // turtle + chest
 const turtleGroup = new THREE.Group();
@@ -1539,6 +1654,24 @@ function rebuild() {
   itemGroup.visible = document.getElementById('items').checked;
   scene.add(itemGroup);
 
+  // flowing water: taller near the bucket, a thin film at the edge
+  if (flowMesh) { scene.remove(flowMesh); flowMesh.dispose(); flowMesh = null; }
+  const shown = FLOW.filter(([x, y]) => visibleCut(x, y));
+  if (shown.length) {
+    flowMesh = new THREE.InstancedMesh(unitBox, flowMat, shown.length);
+    const sc = new THREE.Vector3();
+    shown.forEach(([x, y, z, lvl, falling], i) => {
+      const h = falling ? 1.0 : Math.max(0.1, (8 - lvl) / 9);
+      toWorld(x, y, z, tmpV);
+      sc.set(0.98, h, 0.98);
+      tmpM.makeScale(sc.x, sc.y, sc.z);
+      tmpM.setPosition(tmpV.x, tmpV.y - 0.5 + h / 2, tmpV.z);
+      flowMesh.setMatrixAt(i, tmpM);
+    });
+    flowMesh.visible = document.getElementById('flow').checked;
+    scene.add(flowMesh);
+  }
+
   turtleGroup.visible = document.getElementById('turtle').checked && visibleCut(SX, SY);
   applyXray();
   updateStats(spots.length);
@@ -1568,6 +1701,7 @@ function updateStats(shownTorches) {
   document.getElementById('stats').innerHTML =
     `${digCount.toLocaleString()} blocks to mine<br>${torchTotal} torches` +
     (waterTotal + trapTotal ? `<br>${trapTotal} trapdoors, ${waterTotal} water (placed last)` : '') +
+    (FLOW.length ? `<br><span class="key" style="background:#5c98ea"></span>water spreads to ${FLOW.length} blocks` : '') +
     `<br>${sw}<br><span style="color:#5d5b55">${blockCount.toLocaleString()} cubes drawn</span>`;
 }
 
@@ -1600,6 +1734,7 @@ document.getElementById('mMine').onclick = () => setMode('mine');
 document.getElementById('xray').onchange = e => { state.xray = e.target.checked; applyXray(); };
 document.getElementById('torches').onchange = e => { torchGroup.visible = e.target.checked; };
 document.getElementById('items').onchange = e => { itemGroup.visible = e.target.checked; };
+document.getElementById('flow').onchange = e => { if (flowMesh) flowMesh.visible = e.target.checked; };
 document.getElementById('turtle').onchange = e => { turtleGroup.visible = e.target.checked && visibleCut(SX, SY); };
 document.getElementById('grid').onchange = e => { gridHelper.visible = e.target.checked; fwdArrow.visible = e.target.checked; };
 

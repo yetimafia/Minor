@@ -54,6 +54,7 @@ You only need Python 3. On Windows, get it from python.org; tkinter is included.
 - Tools: dig pen, eraser (right-click always erases), torch pen, **trapdoor pen**, **water bucket pen**, rectangles, and *Set turtle start*. Trapdoor and water squares get dug like normal, then get their item placed at the end. The green **S** is the start and the brown **C** is the chest.
 - Shape buttons: box, sphere, dome, cylinder, and arch tunnel. *Copy to ALL layers above* turns a floor plan into a 3D room.
 - **★ Shape through layers** stamps a rectangle, circle, ring, walls, diamond or plus across a range of layers. Give it a size for the first and last layer and it grows or shrinks in between, so you can make cones, pyramids, round towers and funnels. It can also *leave solid*, which cuts a pillar out of a room.
+- **Show water flow** previews where each water bucket will spread, using Minecraft's rules: up to 7 blocks out, shallower each block, falling down holes and heading toward a nearby drop. Walls and closed trapdoors stop it. The bottom bar warns you if water would wash away torches. The preview assumes everything outside your design is solid; real cave openings can let water escape.
 - *Auto place torches* puts torches on the floor every N blocks.
 - **Move the turtle:** drag the green **S**, or use the arrows in *Turtle start*. ▲▼◀▶ move it forward, back, left and right, and *Up*/*Down* move it between layers. The chest always goes right behind it.
 - The bottom bar shows block count, fuel needed, and warnings.
