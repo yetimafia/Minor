@@ -6,6 +6,9 @@
 --   minor update                          download the newest minor
 --   add "notorch" to skip placing torches
 --
+-- Order of work: light the room (torches), dig everything, then place
+-- trapdoors and finally water buckets.
+--
 -- Box rooms: the turtle sits in the FRONT-LEFT-BOTTOM corner and digs
 -- forward, right and up. Designs: the turtle sits where the design's
 -- start marker is, facing "up" on the designer's grid.
@@ -75,7 +78,7 @@ end
 -- x = forward, z = right, y = up
 -- st values: 0 leave alone, 1 needs digging, 2 open, 3 torch placed, 4 chest
 local L, W, H
-local st, torchAt = {}, {}
+local st, torchAt, waterAt, trapAt = {}, {}, {}, {}
 local sx, sy, sz = 0, 0, 0 -- start position
 local todo, tunnels = 0, 0
 
@@ -130,12 +133,15 @@ local function loadDesign(path)
       y = tonumber(line:match("^layer (%d+)")); x = 0
     elseif y >= 0 and x < L and line ~= "" then
       local z = 0
-      for count, ch in line:gmatch("(%d+)([%.#T])") do
+      for count, ch in line:gmatch("(%d+)([%.#TWD])") do
         for _ = 1, tonumber(count) do
           if z < W then
             if ch ~= "." then
-              st[id(x, y, z)] = 1
-              if ch == "T" then torchAt[id(x, y, z)] = true end
+              local i = id(x, y, z)
+              st[i] = 1
+              if ch == "T" then torchAt[i] = true
+              elseif ch == "W" then waterAt[i] = true
+              elseif ch == "D" then trapAt[i] = true end
             end
             z = z + 1
           end
@@ -189,6 +195,8 @@ end
 if not inb(sx, sy, sz) then error("Design start is outside the design") end
 st[id(sx, sy, sz)] = 2
 torchAt[id(sx, sy, sz)] = nil
+waterAt[id(sx, sy, sz)] = nil
+trapAt[id(sx, sy, sz)] = nil
 if inb(sx - 1, sy, sz) then
   if st[id(sx - 1, sy, sz)] == 1 then
     print("Note: the chest spot is part of the design - I'll leave it.")
@@ -197,7 +205,7 @@ if inb(sx - 1, sy, sz) then
 end
 for i = 1, L * W * H do
   if st[i] == 1 then todo = todo + 1 end
-  if st[i] ~= 1 and st[i] ~= 2 then torchAt[i] = nil end
+  if st[i] ~= 1 and st[i] ~= 2 then torchAt[i] = nil; waterAt[i] = nil; trapAt[i] = nil end
 end
 if not useTorches then torchAt = {} end
 
@@ -335,14 +343,34 @@ local function fuel()
   return f
 end
 
-local function isTorch(i)
+-- items the turtle keeps (never burns or drops in the chest)
+local KINDS = {
+  torch    = function(n) return n:find("torch") ~= nil end,
+  water    = function(n) return n:find("water_bucket") ~= nil end,
+  trapdoor = function(n) return n:find("trapdoor") ~= nil end,
+}
+local KIND_NAMES = { torch = "torches", water = "water buckets", trapdoor = "trapdoors" }
+
+local function kindOf(i)
   local d = turtle.getItemDetail(i)
-  return d and d.name:find("torch") ~= nil
+  if not d then return nil end
+  for k, test in pairs(KINDS) do
+    if test(d.name) then return k end
+  end
+end
+
+local function isTorch(i) return kindOf(i) == "torch" end
+local function isKept(i) return kindOf(i) ~= nil end
+
+local function itemSlot(kind)
+  for i = 1, 16 do
+    if turtle.getItemCount(i) > 0 and kindOf(i) == kind then return i end
+  end
 end
 
 local function refuelFromInventory()
   for i = 1, 16 do
-    if turtle.getItemCount(i) > 0 and not isTorch(i) then
+    if turtle.getItemCount(i) > 0 and not isKept(i) then  -- never burn wooden trapdoors
       turtle.select(i)
       if turtle.refuel(0) then turtle.refuel() end
     end
@@ -357,16 +385,12 @@ local function hasEmptySlot()
   return false
 end
 
-local function torchSlot()
-  for i = 1, 16 do
-    if turtle.getItemCount(i) > 0 and isTorch(i) then return i end
-  end
-end
+local function torchSlot() return itemSlot("torch") end
 
 local function unload()
   face(2)
   for i = 1, 16 do
-    if turtle.getItemCount(i) > 0 and not isTorch(i) then
+    if turtle.getItemCount(i) > 0 and not isKept(i) then
       turtle.select(i)
       while turtle.getItemCount(i) > 0 do
         if not turtle.detect() then
@@ -391,7 +415,9 @@ local function goBack(tx, ty, tz, td)
   face(td)
 end
 
-local function tripHome(needTorches)
+-- need: nil/false, true (= torches), or "torch" / "water" / "trapdoor"
+local function tripHome(need)
+  if need == true then need = "torch" end
   local bx, by, bz, bd = x, y, z, dir
   local dist = math.abs(bx - sx) + math.abs(by - sy) + math.abs(bz - sz)
   goHome()
@@ -401,8 +427,8 @@ local function tripHome(needTorches)
     waitForUser("I need fuel! Put coal in my inventory.")
     refuelFromInventory()
   end
-  while needTorches and not torchSlot() do
-    waitForUser("I need torches! Put some in my inventory.")
+  while need and not itemSlot(need) do
+    waitForUser("I need " .. KIND_NAMES[need] .. "! Put some in my inventory.")
   end
   goBack(bx, by, bz, bd)
 end
@@ -442,6 +468,12 @@ for i in pairs(torchAt) do
 end
 if noRoom > 0 then
   print(noRoom .. " torch spots have no space above - skipping those")
+end
+local waterCount, trapCount = 0, 0
+for _ in pairs(waterAt) do waterCount = waterCount + 1 end
+for _ in pairs(trapAt) do trapCount = trapCount + 1 end
+if waterCount + trapCount > 0 then
+  print(("At the end: %d trapdoors, %d water buckets"):format(trapCount, waterCount))
 end
 print(("Size %d x %d x %d, %d blocks to dig"):format(L, W, H, todo))
 if torchCount > 0 then print(torchCount .. " torches - I'll light the room first") end
@@ -579,13 +611,71 @@ while remainingTorches > 0 do
   write("Torches placed: " .. placed)
 end
 
+---------------------------------------------------------------- trapdoors & water
+-- Placed last, once everything is dug: trapdoors first, then water (so
+-- flowing water can't get in the way). The turtle stands next to the spot
+-- (above it if it can) and places into it.
+local function placeItems(spots, kind)
+  local total = 0
+  for _ in pairs(spots) do total = total + 1 end
+  local done, left = 0, total
+
+  local function how(cx, cy, cz)
+    if get(cx, cy - 1, cz) == 2 and spots[id(cx, cy - 1, cz)] then return "down", id(cx, cy - 1, cz) end
+    for d = 0, 3 do
+      local tx, tz = cx + DX[d], cz + DZ[d]
+      if get(tx, cy, tz) == 2 and spots[id(tx, cy, tz)] then return d, id(tx, cy, tz) end
+    end
+    if get(cx, cy + 1, cz) == 2 and spots[id(cx, cy + 1, cz)] then return "up", id(cx, cy + 1, cz) end
+  end
+  -- prefer standing somewhere that isn't itself a spot
+  local clear = function(a, b, c) return not spots[id(a, b, c)] and how(a, b, c) ~= nil end
+  local any = function(a, b, c) return how(a, b, c) ~= nil end
+
+  while left > 0 do
+    checkup()
+    local path = findPath(clear) or findPath(any)
+    if not path then break end
+    walk(path)
+    local h, si = how(x, y, z)
+    if not h then break end
+    if not itemSlot(kind) then tripHome(kind) end
+    turtle.select(itemSlot(kind) or 1)
+    local ok
+    if h == "down" then ok = turtle.placeDown()
+    elseif h == "up" then ok = turtle.placeUp()
+    else face(h); ok = turtle.place() end
+    turtle.select(1)
+    spots[si] = nil
+    left = left - 1
+    if ok then
+      done = done + 1
+      if kind == "trapdoor" then st[si] = 5 end -- solid now: walk around it
+    end
+    term.setCursorPos(1, 1); term.clearLine()
+    write(("Placing %s: %d of %d"):format(KIND_NAMES[kind], done, total))
+  end
+  return done, left
+end
+
+local trapsPlaced, trapsLeft = 0, 0
+local waterPlaced, waterLeft = 0, 0
+if trapCount > 0 then trapsPlaced, trapsLeft = placeItems(trapAt, "trapdoor") end
+if waterCount > 0 then waterPlaced, waterLeft = placeItems(waterAt, "water") end
+
 ---------------------------------------------------------------- finish
 goHome()
 unload()
 face(0)
 term.clear(); term.setCursorPos(1, 1)
 print(("Done! Dug %d x %d x %d."):format(L, W, H))
-if placed > 0 then print("Placed " .. placed .. " torches.") end
+local torchesTotal = lit + placed
+if torchesTotal > 0 then print("Placed " .. torchesTotal .. " torches.") end
+if trapsPlaced > 0 then print("Placed " .. trapsPlaced .. " trapdoors.") end
+if waterPlaced > 0 then print("Placed " .. waterPlaced .. " water buckets.") end
+if trapsLeft + waterLeft > 0 then
+  print(("Couldn't reach %d trapdoor/water spots."):format(trapsLeft + waterLeft))
+end
 if tunnels > 0 then
   print("Note: dug " .. tunnels .. " extra blocks to reach parts")
   print("of the design that weren't connected.")

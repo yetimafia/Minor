@@ -33,6 +33,7 @@ The turtle downloads the newest version of the design from this repo each time. 
 
 - Put a **chest directly behind** the turtle. When the turtle fills up, it comes back and empties into it.
 - Put **fuel** (coal, charcoal, lava buckets…) in the turtle. If it runs low it burns coal it has dug up. If that's not enough, it comes home and asks for more.
+- If your design has **trapdoors** or **water**, put trapdoors and water buckets in the turtle (one bucket per water spot). They're placed **at the very end**, after everything is dug: trapdoors first, then water. The turtle never burns or unloads them, and comes home to ask if it runs out.
 - Put **torches** in the turtle. It **lights the room first**: it digs a path to each torch spot and places the torch, then digs out everything else, so mobs can't spawn while it works. It keeps torches when it empties into the chest, and comes home to ask for more if it runs out. Add `notorch` to skip torches: `minor box 20 20 5 notorch`.
 
 ## The designer (on your PC)
@@ -50,7 +51,7 @@ You only need Python 3. On Windows, get it from python.org; tkinter is included.
 - You see one layer at a time from above. ▲/▼ (or Page Up/Down) changes layers.
 - **Show neighbour layer** (or press **G**) switches between seeing what's dug on the layer below (blue), the layer above (red), or neither.
 - **Light** squares get dug, **dark** squares are left alone, and **orange** squares get dug and get a torch.
-- Tools: dig pen, eraser (right-click always erases), torch pen, rectangles, and *Set turtle start*. The green **S** is the start and the brown **C** is the chest.
+- Tools: dig pen, eraser (right-click always erases), torch pen, **trapdoor pen**, **water bucket pen**, rectangles, and *Set turtle start*. Trapdoor and water squares get dug like normal, then get their item placed at the end. The green **S** is the start and the brown **C** is the chest.
 - Shape buttons: box, sphere, dome, cylinder, and arch tunnel. *Copy to ALL layers above* turns a floor plan into a 3D room.
 - **★ Shape through layers** stamps a rectangle, circle, ring, walls, diamond or plus across a range of layers. Give it a size for the first and last layer and it grows or shrinks in between, so you can make cones, pyramids, round towers and funnels. It can also *leave solid*, which cuts a pillar out of a room.
 - *Auto place torches* puts torches on the floor every N blocks.
@@ -89,5 +90,5 @@ minor-design 1
 size <length> <width> <height>
 start <x> <y> <z>
 layer 0
-<one line per row, run-length: 3.10#1T>   . keep   # dig   T dig + torch
+<one line per row, run-length: 3.10#1T>   . keep   # dig   T torch   D trapdoor   W water
 ```

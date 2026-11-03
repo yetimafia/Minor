@@ -35,7 +35,7 @@ from collections import deque
 from tkinter import filedialog, messagebox, ttk
 
 MAX = 64
-KEEP, DIG, TORCH = 0, 1, 2
+KEEP, DIG, TORCH, WATER, TRAP = 0, 1, 2, 3, 4  # WATER/TRAP: dug, then placed at the end
 HERE = os.path.dirname(os.path.abspath(__file__))
 DESIGN_DIR = os.path.join(HERE, "designs")
 SETTINGS_FILE = os.path.join(HERE, "minor_settings.json")
@@ -113,6 +113,8 @@ COLORS = {
 # tile looks: (base, highlight, shadow)
 STYLE = {
     DIG:     ("#e6cf98", "#fff3d2", "#b38f52"),   # dug - warm sandy tile
+    WATER:   ("#3f7fd6", "#7fb0f0", "#2a5aa0"),   # water bucket goes here
+    TRAP:    ("#e6cf98", "#fff3d2", "#b38f52"),   # trapdoor goes here (icon drawn on top)
     TORCH:   ("#efd492", "#fff6d8", "#b8904c"),
     KEEP:    ("#3e4046", "#4b4e55", "#303237"),   # left alone - dark stone
     "below": ("#3c5779", "#4d6a90", "#2e4460"),   # dug on the layer below (blue)
@@ -150,6 +152,17 @@ class Design:
         sx, sy, sz = self.start
         self.start = (min(sx, length - 1), min(sy, height - 1), min(sz, width - 1))
 
+    def count_items(self):
+        water = traps = 0
+        for layer in self.grid:
+            for row in layer:
+                for v in row:
+                    if v == WATER:
+                        water += 1
+                    elif v == TRAP:
+                        traps += 1
+        return water, traps
+
     def count(self):
         dig = torches = 0
         for layer in self.grid:
@@ -184,7 +197,7 @@ class Design:
         out = ["minor-design 1",
                f"size {self.L} {self.W} {self.H}",
                "start {} {} {}".format(*self.start)]
-        chars = {KEEP: ".", DIG: "#", TORCH: "T"}
+        chars = {KEEP: ".", DIG: "#", TORCH: "T", WATER: "W", TRAP: "D"}
         for y in range(self.H):
             out.append(f"layer {y}")
             for x in range(self.L):
@@ -204,7 +217,7 @@ class Design:
         import re
         d = None
         y, x = -1, 0
-        values = {".": KEEP, "#": DIG, "T": TORCH}
+        values = {".": KEEP, "#": DIG, "T": TORCH, "W": WATER, "D": TRAP}
         for line in text.splitlines():
             line = line.strip()
             if line.startswith("size "):
@@ -217,7 +230,7 @@ class Design:
                 y, x = int(line.split()[1]), 0
             elif d and y >= 0 and x < d.L and line:
                 z = 0
-                for count, ch in re.findall(r"(\d+)([.#T])", line):
+                for count, ch in re.findall(r"(\d+)([.#TWD])", line):
                     for _ in range(int(count)):
                         if z < d.W:
                             d.grid[y][x][z] = values[ch]
@@ -296,7 +309,8 @@ class App:
         tools = ttk.LabelFrame(side_a, text="Tool (left mouse)", padding=6)
         tools.pack(fill="x", pady=(0, 6))
         for value, text in (("dig", "Dig pen"), ("keep", "Keep pen (eraser)"),
-                            ("torch", "Torch pen"), ("rect", "Dig rectangle"),
+                            ("torch", "Torch pen"), ("trap", "Trapdoor pen (placed last)"),
+                            ("water", "Water bucket pen (placed last)"), ("rect", "Dig rectangle"),
                             ("rectkeep", "Keep rectangle"), ("start", "Set turtle start")):
             ttk.Radiobutton(tools, text=text, value=value, variable=self.tool).pack(anchor="w")
         ttk.Label(tools, text="Right mouse = eraser", foreground="#777").pack(anchor="w", pady=(4, 0))
@@ -434,6 +448,39 @@ class App:
                 self.canvas.delete(item)
         if v == TORCH:
             self.torch_items[(x, z)] = self.draw_torch(x, z)
+        elif v == WATER:
+            self.torch_items[(x, z)] = self.draw_water(x, z)
+        elif v == TRAP:
+            self.torch_items[(x, z)] = self.draw_trapdoor(x, z)
+
+    def draw_water(self, x, z):
+        """Water: little light-blue waves on a blue tile."""
+        c = self.cell
+        px, py = z * c, (self.d.L - 1 - x) * c
+        u = c / 8.0
+        items = []
+        for row, shift in ((2.4, 0), (4.4, 0.8), (6.2, 0)):
+            pts = []
+            for k in range(5):
+                pts += [px + (1.2 + shift + k * 1.3) * u, py + (row + (0.5 if k % 2 else -0.4)) * u]
+            items.append(self.canvas.create_line(*pts, fill="#cfe4ff", width=max(1, c // 12),
+                                                 smooth=True, tags="torch"))
+        return items
+
+    def draw_trapdoor(self, x, z):
+        """Trapdoor: a wooden hatch with a frame and four little windows."""
+        c = self.cell
+        px, py = z * c, (self.d.L - 1 - x) * c
+        u = c / 8.0
+
+        def box(x0, y0, x1, y1, color):
+            return self.canvas.create_rectangle(px + x0 * u, py + y0 * u, px + x1 * u, py + y1 * u,
+                                                fill=color, outline="", tags="torch")
+        items = [box(1.2, 1.2, 6.8, 6.8, "#9c6b38")]          # wood
+        for (a, b) in ((2.0, 2.0), (4.2, 2.0), (2.0, 4.2), (4.2, 4.2)):
+            items.append(box(a, b, a + 1.8, b + 1.8, "#4a3018"))  # holes
+        items.append(box(1.2, 1.2, 6.8, 1.7, "#b9864c"))       # top edge highlight
+        return items
 
     def draw_torch(self, x, z):
         """A little pixel-art torch: wooden stick with a glowing flame."""
@@ -496,7 +543,10 @@ class App:
     def update_stats(self):
         dig, torches = self.d.count()
         fuel = int(dig / 2.5) + self.d.L + self.d.W + self.d.H
+        water, traps = self.d.count_items()
         text = f"{dig} blocks to dig   |   {torches} torches   |   ~{fuel} fuel (~{fuel // 80 + 1} coal)"
+        if water or traps:
+            text += f"   |   at the end: {traps} trapdoors, {water} water buckets"
         bad = self.d.unreachable()
         if bad:
             text += f"   |   ⚠ {bad} blocks not connected to the start (turtle will tunnel to them)"
@@ -527,7 +577,7 @@ class App:
     def pen_value(self, erase):
         if erase:
             return KEEP
-        return {"dig": DIG, "keep": KEEP, "torch": TORCH}.get(self.tool.get())
+        return {"dig": DIG, "keep": KEEP, "torch": TORCH, "water": WATER, "trap": TRAP}.get(self.tool.get())
 
     def on_press(self, e, erase):
         p = self.cell_at(e)
@@ -700,7 +750,7 @@ class App:
                 for z in range(oz, d.W, sp):
                     floor = y == 0 or not d.grid[y - 1][x][z]
                     room_above = y + 1 < d.H and d.grid[y + 1][x][z]
-                    if d.grid[y][x][z] and floor and room_above and (x, y, z) != d.start:
+                    if d.grid[y][x][z] == DIG and floor and room_above and (x, y, z) != d.start:
                         d.grid[y][x][z] = TORCH
                         count += 1
         self.redraw()
@@ -1229,6 +1279,7 @@ VIEWER_HTML = r'''<!DOCTYPE html>
   <div class="checks">
     <label><input type="checkbox" id="xray"> See-through</label>
     <label><input type="checkbox" id="torches" checked> Torches</label>
+    <label><input type="checkbox" id="items" checked> Trapdoors &amp; water</label>
     <label><input type="checkbox" id="turtle" checked> Turtle &amp; chest</label>
     <label><input type="checkbox" id="grid" checked> Ground grid</label>
   </div>
@@ -1260,7 +1311,7 @@ window.__minorStarted = true;
 const DESIGN = __DESIGN__;
 
 // ---------------------------------------------------------------- parse
-const KEEP = 0, DIG = 1, TORCH = 2;
+const KEEP = 0, DIG = 1, TORCH = 2, WATER = 3, TRAP = 4;
 let L = 1, W = 1, H = 1, start = [0, 0, 0], grid;
 (function parse() {
   let y = -1, x = 0;
@@ -1275,8 +1326,8 @@ let L = 1, W = 1, H = 1, start = [0, 0, 0], grid;
       y = Number(line.split(/\s+/)[1]); x = 0;
     } else if (grid && y >= 0 && x < L && line && !line.startsWith('minor')) {
       let z = 0;
-      for (const m of line.matchAll(/(\d+)([.#T])/g)) {
-        const v = m[2] === '#' ? DIG : m[2] === 'T' ? TORCH : KEEP;
+      for (const m of line.matchAll(/(\d+)([.#TWD])/g)) {
+        const v = { '#': DIG, 'T': TORCH, 'W': WATER, 'D': TRAP }[m[2]] ?? KEEP;
         for (let n = 0; n < +m[1] && z < W; n++, z++) grid[x + L * (z + W * y)] = v;
       }
       x++;
@@ -1335,6 +1386,14 @@ const coreGeo = new THREE.BoxGeometry(0.13, 0.13, 0.13);
 const coreMat = new THREE.MeshBasicMaterial({ color: 0xfff1a0 });
 let torchGroup = new THREE.Group();
 scene.add(torchGroup);
+
+// water (see-through blue) and trapdoors (thin wooden slab on the floor)
+const waterGeo = new THREE.BoxGeometry(0.98, 0.9, 0.98);
+const waterMat = new THREE.MeshLambertMaterial({ color: 0x3f7fd6, transparent: true, opacity: 0.55, depthWrite: false });
+const trapGeo = new THREE.BoxGeometry(0.96, 0.19, 0.96);
+const trapMat = new THREE.MeshLambertMaterial({ color: 0x9c6b38 });
+let itemGroup = new THREE.Group();
+scene.add(itemGroup);
 
 // turtle + chest
 const turtleGroup = new THREE.Group();
@@ -1457,6 +1516,29 @@ function rebuild() {
   torchGroup.visible = document.getElementById('torches').checked;
   scene.add(torchGroup);
 
+  scene.remove(itemGroup);
+  itemGroup = new THREE.Group();
+  const water = [], traps = [];
+  for (let y = 0; y < H; y++) for (let x = 0; x < L; x++) for (let z = 0; z < W; z++) {
+    if (!visibleCut(x, y)) continue;
+    const v = at(x, y, z);
+    if (v === WATER) water.push([x, y, z]); else if (v === TRAP) traps.push([x, y, z]);
+  }
+  const addInst = (list, geo, mat, dy) => {
+    if (!list.length) return;
+    const m = new THREE.InstancedMesh(geo, mat, list.length);
+    list.forEach(([x, y, z], i) => {
+      toWorld(x, y, z, tmpV);
+      tmpM.makeTranslation(tmpV.x, tmpV.y + dy, tmpV.z);
+      m.setMatrixAt(i, tmpM);
+    });
+    itemGroup.add(m);
+  };
+  addInst(traps, trapGeo, trapMat, -0.5 + 0.095);
+  addInst(water, waterGeo, waterMat, -0.05);
+  itemGroup.visible = document.getElementById('items').checked;
+  scene.add(itemGroup);
+
   turtleGroup.visible = document.getElementById('turtle').checked && visibleCut(SX, SY);
   applyXray();
   updateStats(spots.length);
@@ -1470,8 +1552,13 @@ function applyXray() {
 }
 
 // ---------------------------------------------------------------- UI
-let digCount = 0, torchTotal = 0;
-for (let i = 0; i < grid.length; i++) { if (grid[i]) digCount++; if (grid[i] === TORCH) torchTotal++; }
+let digCount = 0, torchTotal = 0, waterTotal = 0, trapTotal = 0;
+for (let i = 0; i < grid.length; i++) {
+  if (grid[i]) digCount++;
+  if (grid[i] === TORCH) torchTotal++;
+  if (grid[i] === WATER) waterTotal++;
+  if (grid[i] === TRAP) trapTotal++;
+}
 document.getElementById('size').textContent = `${L} long × ${W} wide × ${H} tall`;
 
 function updateStats(shownTorches) {
@@ -1480,6 +1567,7 @@ function updateStats(shownTorches) {
     : '<span class="key" style="background:#a8a399"></span>cave walls &nbsp;<span class="key" style="background:#686a70"></span>rock';
   document.getElementById('stats').innerHTML =
     `${digCount.toLocaleString()} blocks to mine<br>${torchTotal} torches` +
+    (waterTotal + trapTotal ? `<br>${trapTotal} trapdoors, ${waterTotal} water (placed last)` : '') +
     `<br>${sw}<br><span style="color:#5d5b55">${blockCount.toLocaleString()} cubes drawn</span>`;
 }
 
@@ -1511,6 +1599,7 @@ document.getElementById('mHollow').onclick = () => setMode('hollow');
 document.getElementById('mMine').onclick = () => setMode('mine');
 document.getElementById('xray').onchange = e => { state.xray = e.target.checked; applyXray(); };
 document.getElementById('torches').onchange = e => { torchGroup.visible = e.target.checked; };
+document.getElementById('items').onchange = e => { itemGroup.visible = e.target.checked; };
 document.getElementById('turtle').onchange = e => { turtleGroup.visible = e.target.checked && visibleCut(SX, SY); };
 document.getElementById('grid').onchange = e => { gridHelper.visible = e.target.checked; fwdArrow.visible = e.target.checked; };
 
