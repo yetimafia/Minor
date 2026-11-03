@@ -44,18 +44,27 @@ TABS_DIR = os.path.join(DESIGN_DIR, "_tabs")   # the 5 auto-saved tabs live here
 TAB_COUNT = 5      # tabs you start with
 MAX_TABS = 10
 
-# ---- look: light blue ------------------------------------------------
+# ---- look: dark green -------------------------------------------------
 THEME = {
-    "bg": "#eaf4f8",        # window
-    "panel": "#f6fbfd",     # buttons / fields
-    "line": "#c4dce6",      # borders
-    "text": "#1d3a47",
-    "muted": "#6e8c98",
-    "accent": "#3d9bd1",    # main blue
-    "accent_dark": "#2b80b2",
-    "accent_soft": "#d3eaf6",
-    "tab": "#d9eaf2",
-    "grid_bg": "#d6e6ee",   # behind the drawing grid
+    "bg": "#1c2a22",          # window
+    "panel": "#26372e",       # buttons
+    "panel_hover": "#2f4438",
+    "field": "#22322a",       # text boxes
+    "line": "#3a5245",        # borders
+    "line_hover": "#4f6e5c",
+    "text": "#e2eee6",
+    "muted": "#8fa898",
+    "accent": "#3f9f62",      # main green
+    "accent_hover": "#4ab270",
+    "accent_dark": "#2e7f4c",
+    "accent_soft": "#2c4637",
+    "tab": "#26372e",
+    "tab_hover": "#30463a",
+    "grid_bg": "#141f19",     # behind the drawing grid
+    "heading": "#7fcf9a",     # section titles
+    "ok": "#7fd39b",          # status messages
+    "warn": "#e9b949",
+    "err": "#f07b6e",
 }
 
 
@@ -90,45 +99,46 @@ def apply_theme(root):
     st.configure(".", background=t["bg"], foreground=t["text"], bordercolor=t["line"],
                  lightcolor=t["panel"], darkcolor=t["line"], troughcolor=t["accent_soft"],
                  focuscolor=t["accent"], selectbackground=t["accent"], selectforeground="white",
-                 fieldbackground="white", insertcolor=t["text"], arrowcolor=t["accent_dark"])
+                 fieldbackground=t["field"], insertcolor=t["text"], arrowcolor=t["heading"])
     st.configure("TFrame", background=t["bg"])
     st.configure("TLabel", background=t["bg"], foreground=t["text"])
     st.configure("TLabelframe", background=t["bg"], bordercolor=t["line"], relief="solid", borderwidth=1)
-    st.configure("TLabelframe.Label", background=t["bg"], foreground=t["accent_dark"],
-                 font=(family, 10, "bold"))
-    st.configure("TButton", background="#ffffff", foreground=t["text"], bordercolor="#b6d3df",
-                 lightcolor="#ffffff", darkcolor="#e1eef4", padding=(10, 4), focusthickness=0)
+    st.configure("TLabelframe.Label", background=t["bg"], foreground=t["heading"], font=(family, 10, "bold"))
+    st.configure("TButton", background=t["panel"], foreground=t["text"], bordercolor=t["line"],
+                 lightcolor=t["panel"], darkcolor=t["panel"], padding=(10, 4), focusthickness=0)
     st.map("TButton",
-           background=[("pressed", t["accent_soft"]), ("active", "#eef7fb")],
-           bordercolor=[("active", t["accent"]), ("focus", "#8ec3dd")],
-           lightcolor=[("active", "#f6fbfd")], darkcolor=[("active", "#d9ecf5")])
-    st.configure("Accent.TButton", background=t["accent"], foreground="white", bordercolor=t["accent"],
+           background=[("pressed", t["accent_soft"]), ("active", t["panel_hover"])],
+           bordercolor=[("active", t["line_hover"]), ("focus", t["line_hover"])],
+           lightcolor=[("active", t["panel_hover"])], darkcolor=[("active", t["panel_hover"])],
+           foreground=[("disabled", t["muted"])])
+    st.configure("Accent.TButton", background=t["accent"], foreground="white", bordercolor=t["accent_dark"],
                  lightcolor=t["accent"], darkcolor=t["accent"], font=(family, 10, "bold"))
     st.map("Accent.TButton",
-           background=[("pressed", t["accent_dark"]), ("active", "#4eaadf")],
-           lightcolor=[("active", "#4eaadf")], darkcolor=[("active", "#4eaadf")],
-           bordercolor=[("active", t["accent_dark"])], foreground=[("disabled", "#e0eef5")])
+           background=[("pressed", t["accent_dark"]), ("active", t["accent_hover"])],
+           lightcolor=[("active", t["accent_hover"])], darkcolor=[("active", t["accent_hover"])],
+           bordercolor=[("active", t["accent_dark"])])
     for w in ("TCheckbutton", "TRadiobutton"):
-        st.configure(w, background=t["bg"], foreground=t["text"], indicatorbackground="white",
-                     indicatorforeground="white", upperbordercolor="#9cc4d6", lowerbordercolor="#9cc4d6",
+        st.configure(w, background=t["bg"], foreground=t["text"], indicatorbackground=t["field"],
+                     indicatorforeground="white", upperbordercolor=t["line_hover"], lowerbordercolor=t["line_hover"],
                      indicatormargin=(0, 0, 6, 0), focusthickness=0)
         st.map(w, indicatorbackground=[("selected", t["accent"]), ("pressed", t["accent_soft"])],
                indicatorforeground=[("selected", "white")],
                upperbordercolor=[("selected", t["accent_dark"])], lowerbordercolor=[("selected", t["accent_dark"])],
-               background=[("active", t["bg"])])
-    st.configure("TEntry", fieldbackground="white", bordercolor=t["line"], lightcolor="white", padding=3)
-    st.map("TEntry", bordercolor=[("focus", t["accent"])])
-    st.configure("TSpinbox", fieldbackground="white", bordercolor=t["line"], lightcolor="white",
-                 arrowsize=11, padding=2)
-    st.map("TSpinbox", bordercolor=[("focus", t["accent"])])
-    st.configure("TCombobox", fieldbackground="white", bordercolor=t["line"], lightcolor="white", padding=2)
-    root.option_add("*Listbox.background", "white")
-    root.option_add("*Listbox.foreground", t["text"])
-    root.option_add("*Listbox.selectBackground", t["accent"])
-    root.option_add("*Listbox.highlightColor", t["accent"])
-    root.option_add("*Listbox.borderWidth", 0)
-    root.option_add("*Toplevel.background", t["bg"])
-    root.option_add("*TCombobox*Listbox.background", "white")
+               background=[("active", t["bg"])], foreground=[("active", t["text"])])
+    for w in ("TEntry", "TSpinbox", "TCombobox"):
+        st.configure(w, fieldbackground=t["field"], foreground=t["text"], bordercolor=t["line"],
+                     lightcolor=t["field"], darkcolor=t["field"], insertcolor=t["text"], padding=3)
+        st.map(w, bordercolor=[("focus", t["accent"])], fieldbackground=[("readonly", t["field"])],
+               foreground=[("readonly", t["text"])])
+    st.configure("TSpinbox", arrowsize=11, background=t["panel"])
+    st.configure("TCombobox", background=t["panel"])
+    for opt, val in (("*Listbox.background", t["field"]), ("*Listbox.foreground", t["text"]),
+                     ("*Listbox.selectBackground", t["accent"]), ("*Listbox.selectForeground", "white"),
+                     ("*Listbox.highlightColor", t["accent"]), ("*Listbox.highlightBackground", t["line"]),
+                     ("*Listbox.borderWidth", 0), ("*Toplevel.background", t["bg"]),
+                     ("*TCombobox*Listbox.background", t["field"]),
+                     ("*TCombobox*Listbox.foreground", t["text"])):
+        root.option_add(opt, val)
 DEFAULT_SETTINGS = {"repo": "yetimafia/Minor", "branch": "main", "token": ""}
 UPDATE_REPO = "yetimafia/Minor"  # where the designer and minor.lua live
 
@@ -511,7 +521,7 @@ class App:
 
         tabs = ttk.Frame(self.root, padding=(6, 2, 6, 0))
         tabs.pack(fill="x")
-        self.autosave_label = ttk.Label(tabs, text="", foreground="#3a9a6e")
+        self.autosave_label = ttk.Label(tabs, text="", foreground=THEME["ok"])
         self.autosave_label.pack(side="right", padx=(6, 0))
         self.tabbar = tk.Canvas(tabs, height=34, bg=THEME["bg"], highlightthickness=0)
         self.tabbar.pack(side="left", fill="x", expand=True)
@@ -647,7 +657,7 @@ class App:
         ttk.Entry(gh, textvariable=self.command, state="readonly").pack(side="left", fill="x", expand=True)
         ttk.Button(gh, text="GitHub settings", command=self.settings_dialog).pack(side="left", padx=(6, 0))
         ttk.Button(gh, text="⟳ Update designer", command=self.update_designer).pack(side="left", padx=(6, 0))
-        self.status = ttk.Label(self.root, text="", foreground="#3a7", padding=(8, 0, 8, 6))
+        self.status = ttk.Label(self.root, text="", foreground=THEME["ok"], padding=(8, 0, 8, 6))
         self.status.pack(fill="x")
         self.name.trace_add("write", lambda *a: self.refresh_command())
         self.refresh_command()
@@ -1058,7 +1068,7 @@ class App:
         with open(path, "w", newline="\n") as f:
             f.write(self.d.to_text())
         if not quiet:
-            self.status.config(text=f"Saved {path}. Upload it to send it to the turtle.", foreground="#3a7")
+            self.status.config(text=f"Saved {path}. Upload it to send it to the turtle.", foreground=THEME["ok"])
         return path
 
     def open(self):
@@ -1145,7 +1155,7 @@ class App:
             self.name.set(name)
             self.rebuild_grid()
             self.status.config(text=f"Opened '{name}' from the web into this tab.",
-                               foreground="#3a7")
+                               foreground=THEME["ok"])
             win.destroy()
 
         def load_pick(event=None):
@@ -1262,7 +1272,7 @@ class App:
             self.snapshot()
             n = self.apply_layer_shape(vals)
             self.redraw()
-            self.status.config(text=f"Shape applied: {n} blocks changed. (Ctrl+Z to undo)", foreground="#3a7")
+            self.status.config(text=f"Shape applied: {n} blocks changed. (Ctrl+Z to undo)", foreground=THEME["ok"])
 
         ttk.Button(bf, text="Undo", command=self.undo).pack(side="left")
         ttk.Button(bf, text="Apply", command=apply).pack(side="left", padx=6)
@@ -1395,7 +1405,7 @@ class App:
                     k += 1
             return True
         except OSError as ex:
-            self.status.config(text=f"Couldn't auto-save: {ex}", foreground="#c33")
+            self.status.config(text=f"Couldn't auto-save: {ex}", foreground=THEME["err"])
             return False
 
     def autosave_tick(self):
@@ -1421,7 +1431,7 @@ class App:
     def add_tab(self):
         if len(self.slots) >= MAX_TABS:
             self.status.config(text=f"That's the most tabs ({MAX_TABS}). Delete one to make room.",
-                               foreground="#c80")
+                               foreground=THEME["warn"])
             return
         self.store_tab()
         self.save_tabs()
@@ -1437,7 +1447,7 @@ class App:
 
     def delete_tab(self, i):
         if len(self.slots) <= 1:
-            self.status.config(text="You need at least one tab.", foreground="#c80")
+            self.status.config(text="You need at least one tab.", foreground=THEME["warn"])
             return
         self.store_tab()
         s = self.slots[i]
@@ -1485,7 +1495,7 @@ class App:
                 x = max(0, drag["x"] - drag["grab"])
             active = i == self.cur_slot
             hover = self.tab_hover_at == i
-            fill = t["accent"] if active else ("#c8e2ee" if hover else t["tab"])
+            fill = t["accent"] if active else (t["tab_hover"] if hover else t["tab"])
             fg = "white" if active else t["text"]
             self.round_rect(cv, x, 4, x + tw, 34, 9, fill=fill, outline="")
             name = self.name.get() if active else s["name"]
@@ -1494,14 +1504,14 @@ class App:
             cv.create_text(x + 11, 19, text=label, anchor="w", fill=fg,
                            font=(UI_FONT, 10, "bold" if active else "normal"))
             cx = x + tw - 13  # the little x
-            cv.create_text(cx, 19, text="×", fill=("#e6f4fb" if active else t["muted"]),
+            cv.create_text(cx, 19, text="×", fill=("#e8f7ee" if active else t["muted"]),
                            font=(UI_FONT, 12))
         # + button
         px = 2 + len(self.slots) * pitch + 4
         if len(self.slots) < MAX_TABS:
-            plus_fill = "#c8e2ee" if self.tab_hover_at == "plus" else t["tab"]
+            plus_fill = t["tab_hover"] if self.tab_hover_at == "plus" else t["tab"]
             cv.create_oval(px, 7, px + 25, 32, fill=plus_fill, outline="")
-            cv.create_text(px + 12.5, 19, text="+", fill=t["accent_dark"], font=(UI_FONT, 13, "bold"))
+            cv.create_text(px + 12.5, 19, text="+", fill=t["heading"], font=(UI_FONT, 13, "bold"))
 
     def tab_hit(self, x, y):
         """What's under the mouse: ('tab', i), ('close', i), ('plus', None) or (None, None)."""
@@ -1603,11 +1613,11 @@ class App:
             f.write(page)
         url = pathlib.Path(path).resolve().as_uri()
         if open_in_chrome(url):
-            self.status.config(text="Opened the 3D view in Chrome.", foreground="#3a7")
+            self.status.config(text="Opened the 3D view in Chrome.", foreground=THEME["ok"])
         else:
             webbrowser.open(url)
             self.status.config(text="Chrome not found - opened the 3D view in your default browser.",
-                               foreground="#c80")
+                               foreground=THEME["warn"])
 
     # ---- turtle start -------------------------------------------------
     def move_start(self, dx, dy, dz):
@@ -1616,7 +1626,7 @@ class App:
         nx, ny, nz = sx + dx, sy + dy, sz + dz
         if not (0 <= nx < d.L and 0 <= ny < d.H and 0 <= nz < d.W):
             self.status.config(text="The turtle has to start inside the design. Make the design "
-                                    "bigger to move it further.", foreground="#c80")
+                                    "bigger to move it further.", foreground=THEME["warn"])
             return
         self.snapshot()
         d.start = (nx, ny, nz)
@@ -1659,7 +1669,7 @@ class App:
             except Exception as ex:
                 errors.append(f"{url.split('/')[2]}: {ex}")
         if new_code is None:
-            self.status.config(text="Update failed.", foreground="#c33")
+            self.status.config(text="Update failed.", foreground=THEME["err"])
             hint = ""
             if any("CERTIFICATE" in e.upper() for e in errors):
                 hint = ("\n\nOn a Mac, run 'Install Certificates.command' from your Python folder "
@@ -1671,7 +1681,7 @@ class App:
         with open(me, encoding="utf-8") as f:
             old_code = f.read()
         if new_code.replace("\r\n", "\n") == old_code.replace("\r\n", "\n"):
-            self.status.config(text="You already have the newest designer.", foreground="#3a7")
+            self.status.config(text="You already have the newest designer.", foreground=THEME["ok"])
             return
         if not messagebox.askyesno("Update", "A new version is ready. Restart the designer now?\n\n"
                                              "Your current design will be kept open."):
@@ -1721,7 +1731,7 @@ class App:
         self.name.set(info.get("name", "myroom"))
         self.layer = max(0, min(d.H - 1, int(info.get("layer", 0))))
         self.rebuild_grid()
-        self.status.config(text="Updated to the newest designer!", foreground="#3a7")
+        self.status.config(text="Updated to the newest designer!", foreground=THEME["ok"])
         try:
             os.remove(path)
         except OSError:
@@ -1751,10 +1761,10 @@ class App:
         self.root.update()
         if name in self.uploaded:
             self.status.config(text="Copied! Click the turtle's screen and press Ctrl+V, then Enter.",
-                               foreground="#3a7")
+                               foreground=THEME["ok"])
         else:
             self.status.config(text="Copied - but this design hasn't been uploaded yet this session. "
-                                    "Upload it first if you changed it.", foreground="#c80")
+                                    "Upload it first if you changed it.", foreground=THEME["warn"])
 
     def settings_dialog(self, first_time=False):
         win = tk.Toplevel(self.root)
@@ -1853,13 +1863,13 @@ class App:
                 hint = "\n\nThe token is wrong, expired, or doesn't have Contents: Read and write."
             elif code == 404:
                 hint = "\n\nCheck the repo name in GitHub settings, and that the token can see that repo."
-            self.status.config(text="Upload failed.", foreground="#c33")
+            self.status.config(text="Upload failed.", foreground=THEME["err"])
             messagebox.showerror("Upload", f"GitHub said: {code} {msg}{hint}")
             return
         self.uploaded[name] = info.get("commit", {}).get("sha") or st["branch"]
         self.refresh_command()
         self.status.config(text=f"Uploaded '{name}'! Now click '2. Copy turtle command' and paste it "
-                                "into the turtle.", foreground="#3a7")
+                                "into the turtle.", foreground=THEME["ok"])
 
 
 # 3D viewer page (three.js r149). __NAME__ and __DESIGN__ get filled in.
@@ -1869,30 +1879,30 @@ VIEWER_HTML = r'''<!DOCTYPE html>
 <meta charset="utf-8">
 <title>__NAME__ – Minor 3D</title>
 <style>
-  html, body { margin: 0; height: 100%; overflow: hidden; background: #17181c;
-               font: 13px "Segoe UI", system-ui, sans-serif; color: #e8e6e1; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #141f19;
+               font: 13px "Segoe UI", system-ui, sans-serif; color: #e2eee6; }
   #c { display: block; width: 100vw; height: 100vh; }
   #ui { position: absolute; top: 12px; left: 12px; width: 250px; padding: 14px 16px 12px;
-        background: rgba(24, 25, 30, .88); border: 1px solid #2c2e35; border-radius: 10px;
+        background: rgba(28, 42, 34, .92); border: 1px solid #3a5245; border-radius: 10px;
         box-shadow: 0 6px 24px rgba(0,0,0,.35); }
   h1 { margin: 0 0 2px; font-size: 16px; font-weight: 600; }
-  .sub { color: #9a988f; margin-bottom: 12px; }
-  .seg { display: flex; background: #101114; border-radius: 7px; padding: 3px; margin-bottom: 12px; }
+  .sub { color: #8fa898; margin-bottom: 12px; }
+  .seg { display: flex; background: #101a14; border-radius: 7px; padding: 3px; margin-bottom: 12px; }
   .seg button { flex: 1; border: 0; background: transparent; color: #b7b4ab; padding: 7px 4px;
                 border-radius: 5px; cursor: pointer; font: inherit; }
-  .seg button.on { background: #e6cf98; color: #1d1a12; font-weight: 600; }
+  .seg button.on { background: #3f9f62; color: #fff; font-weight: 600; }
   label.row { display: block; margin: 9px 0 3px; color: #c9c6bd; }
-  label.row span { float: right; color: #e6cf98; font-variant-numeric: tabular-nums; }
-  input[type=range] { width: 100%; accent-color: #e6cf98; }
+  label.row span { float: right; color: #7fcf9a; font-variant-numeric: tabular-nums; }
+  input[type=range] { width: 100%; accent-color: #3f9f62; }
   .checks { margin-top: 10px; display: grid; gap: 4px; }
   .checks label { cursor: pointer; color: #c9c6bd; }
   .btns { display: flex; gap: 6px; margin-top: 12px; }
-  .btns button { flex: 1; background: #2a2c33; color: #e8e6e1; border: 1px solid #3a3d46;
+  .btns button { flex: 1; background: #26372e; color: #e2eee6; border: 1px solid #3a5245;
                  border-radius: 6px; padding: 6px 4px; cursor: pointer; font: inherit; }
-  .btns button:hover { background: #343741; }
-  #stats { margin-top: 12px; padding-top: 10px; border-top: 1px solid #2c2e35; color: #9a988f; line-height: 1.6; }
+  .btns button:hover { background: #2f4438; }
+  #stats { margin-top: 12px; padding-top: 10px; border-top: 1px solid #3a5245; color: #8fa898; line-height: 1.6; }
   .key { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
-  #help { position: absolute; bottom: 12px; left: 12px; color: #7d7b74; font-size: 12px; }
+  #help { position: absolute; bottom: 12px; left: 12px; color: #7d9a88; font-size: 12px; }
   #err { position: absolute; inset: 0; display: none; place-items: center; text-align: center; color: #e8e6e1; }
 </style>
 </head>
@@ -1982,8 +1992,8 @@ const canvas = document.getElementById('c');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x17181c);
-scene.fog = new THREE.Fog(0x17181c, 200, 600);
+scene.background = new THREE.Color(0x141f19);
+scene.fog = new THREE.Fog(0x141f19, 200, 600);
 
 const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 2000);
 const controls = new OrbitControls(camera, canvas);
@@ -1999,7 +2009,7 @@ fill.position.set(-0.7, 0.3, -0.6);
 scene.add(fill);
 
 const maxDim = Math.max(L, W, H);
-const gridHelper = new THREE.GridHelper(Math.ceil(maxDim * 1.6 / 2) * 2 + 8, Math.ceil(maxDim * 1.6 / 2) * 2 + 8, 0x3a3d46, 0x26282e);
+const gridHelper = new THREE.GridHelper(Math.ceil(maxDim * 1.6 / 2) * 2 + 8, Math.ceil(maxDim * 1.6 / 2) * 2 + 8, 0x34503f, 0x223229);
 gridHelper.position.y = -0.002 - 1; // under the padding layer
 scene.add(gridHelper);
 
