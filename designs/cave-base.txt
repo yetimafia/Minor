@@ -1,7 +1,6 @@
 minor-design 1
 size 26 26 9
 start 0 1 13
-trapdoors open
 layer 0
 26.
 26.
@@ -47,7 +46,7 @@ layer 1
 26#
 26#
 1.1#1T13#1T6#1T1#1.
-1.7#7D10#1.
+1.7#3O4D10#1.
 1.24#1.
 2.22#2.
 2.22#2.

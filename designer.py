@@ -36,7 +36,8 @@ from collections import deque
 from tkinter import filedialog, messagebox, ttk
 
 MAX = 64
-KEEP, DIG, TORCH, WATER, TRAP = 0, 1, 2, 3, 4  # WATER/TRAP: dug, then placed at the end
+KEEP, DIG, TORCH, WATER, TRAP, TRAP_OPEN = 0, 1, 2, 3, 4, 5  # water/trapdoors: dug, then placed at the end
+TRAPS = (TRAP, TRAP_OPEN)
 HERE = os.path.dirname(os.path.abspath(__file__))
 DESIGN_DIR = os.path.join(HERE, "designs")
 SETTINGS_FILE = os.path.join(HERE, "minor_settings.json")
@@ -269,6 +270,7 @@ STYLE = {
     DIG:     ("#e6cf98", "#fff3d2", "#b38f52"),   # dug - warm sandy tile
     WATER:   ("#3f7fd6", "#7fb0f0", "#2a5aa0"),   # water bucket goes here
     TRAP:    ("#e6cf98", "#fff3d2", "#b38f52"),   # trapdoor goes here (icon drawn on top)
+    TRAP_OPEN: ("#e6cf98", "#fff3d2", "#b38f52"),  # trapdoor, then opened
     TORCH:   ("#efd492", "#fff6d8", "#b8904c"),
     KEEP:    ("#3e4046", "#4b4e55", "#303237"),   # left alone - dark stone
     "below": ("#3c5779", "#4d6a90", "#2e4460"),   # dug on the layer below (blue)
@@ -301,7 +303,6 @@ class Design:
         self.L, self.W, self.H = length, width, height
         self.grid = [[[KEEP] * width for _ in range(length)] for _ in range(height)]
         self.start = (0, 0, 0)  # x (forward), y (up), z (right)
-        self.open_traps = True  # turtle clicks trapdoors open after placing them
 
     def resize(self, length, width, height):
         old = self.grid
@@ -333,7 +334,7 @@ class Design:
                 return False
             if (x, y, z) == (sx, sy, sz) or (x, y, z) == (sx - 1, sy, sz):
                 return False  # turtle parks here / chest
-            return grid[y][x][z] not in (KEEP, TRAP)
+            return grid[y][x][z] not in (KEEP, TRAP, TRAP_OPEN)
 
         def hole_below(x, y, z):
             return open_(x, y - 1, z)
@@ -405,9 +406,12 @@ class Design:
                 for v in row:
                     if v == WATER:
                         water += 1
-                    elif v == TRAP:
+                    elif v in TRAPS:
                         traps += 1
         return water, traps
+
+    def count_open_traps(self):
+        return sum(1 for layer in self.grid for row in layer for v in row if v == TRAP_OPEN)
 
     def count(self):
         dig = torches = 0
@@ -443,9 +447,7 @@ class Design:
         out = ["minor-design 1",
                f"size {self.L} {self.W} {self.H}",
                "start {} {} {}".format(*self.start)]
-        if self.open_traps:
-            out.append("trapdoors open")
-        chars = {KEEP: ".", DIG: "#", TORCH: "T", WATER: "W", TRAP: "D"}
+        chars = {KEEP: ".", DIG: "#", TORCH: "T", WATER: "W", TRAP: "D", TRAP_OPEN: "O"}
         for y in range(self.H):
             out.append(f"layer {y}")
             for x in range(self.L):
@@ -464,8 +466,9 @@ class Design:
     def from_text(cls, text):
         import re
         d = None
+        all_open = False
         y, x = -1, 0
-        values = {".": KEEP, "#": DIG, "T": TORCH, "W": WATER, "D": TRAP}
+        values = {".": KEEP, "#": DIG, "T": TORCH, "W": WATER, "D": TRAP, "O": TRAP_OPEN}
         for line in text.splitlines():
             line = line.strip()
             if line.startswith("size "):
@@ -474,14 +477,13 @@ class Design:
             elif line.startswith("start ") and d:
                 sx, sy, sz = map(int, line.split()[1:4])
                 d.start = (sx, sy, sz)
-                d.open_traps = False  # only on if the file says so
             elif line.startswith("trapdoors open") and d:
-                d.open_traps = True
+                all_open = True  # older files: one setting for every trapdoor
             elif line.startswith("layer ") and d:
                 y, x = int(line.split()[1]), 0
             elif d and y >= 0 and x < d.L and line:
                 z = 0
-                for count, ch in re.findall(r"(\d+)([.#TWD])", line):
+                for count, ch in re.findall(r"(\d+)([.#TWDO])", line):
                     for _ in range(int(count)):
                         if z < d.W:
                             d.grid[y][x][z] = values[ch]
@@ -489,6 +491,12 @@ class Design:
                 x += 1
         if d is None:
             raise ValueError("Not a minor design file")
+        if all_open:
+            for layer in d.grid:
+                for row in layer:
+                    for z, v in enumerate(row):
+                        if v == TRAP:
+                            row[z] = TRAP_OPEN
         return d
 
 
@@ -591,7 +599,7 @@ class App:
         tools = ttk.LabelFrame(side_a, text="Tool (left mouse)", padding=6)
         tools.pack(fill="x", pady=(0, 6))
         for value, text in (("dig", "Dig pen"), ("keep", "Keep pen (eraser)"),
-                            ("torch", "Torch pen"), ("trap", "Trapdoor pen (placed last)"),
+                            ("torch", "Torch pen"), ("trap", "Trapdoor pen (placed last)"), ("flip", "Flip trapdoor open/closed"),
                             ("water", "Water bucket pen (placed last)"), ("rect", "Dig rectangle"),
                             ("rectkeep", "Keep rectangle"), ("start", "Set turtle start")):
             ttk.Radiobutton(tools, text=text, value=value, variable=self.tool).pack(anchor="w")
@@ -625,11 +633,22 @@ class App:
 
         trp = ttk.LabelFrame(side_b, text="Trapdoors", padding=6)
         trp.pack(fill="x", pady=(0, 6))
-        self.open_traps = tk.BooleanVar(value=True)
-        ttk.Checkbutton(trp, text="Open them after placing", variable=self.open_traps,
-                        command=self.set_open_traps).pack(anchor="w")
-        ttk.Label(trp, text="Needs 1 stick in the turtle and\nthe datapack (see README)",
-                  foreground=THEME["muted"], justify="left").pack(anchor="w")
+        ttk.Label(trp, text="Trapdoor pen places them:").pack(anchor="w")
+        self.trap_mode = tk.StringVar(value="closed")
+        mr = ttk.Frame(trp)
+        mr.pack(anchor="w", pady=(2, 4))
+        ttk.Radiobutton(mr, text="Closed", value="closed", variable=self.trap_mode,
+                        command=self.pick_trap_pen).pack(side="left")
+        ttk.Radiobutton(mr, text="Open", value="open", variable=self.trap_mode,
+                        command=self.pick_trap_pen).pack(side="left", padx=(10, 0))
+        br = ttk.Frame(trp)
+        br.pack(fill="x")
+        ttk.Button(br, text="All open", command=lambda: self.set_all_traps(TRAP_OPEN)).pack(
+            side="left", fill="x", expand=True)
+        ttk.Button(br, text="All closed", command=lambda: self.set_all_traps(TRAP)).pack(
+            side="left", fill="x", expand=True, padx=(4, 0))
+        ttk.Label(trp, text="Open ones need 1 stick in the turtle\nand the datapack (see README)",
+                  foreground=THEME["muted"], justify="left").pack(anchor="w", pady=(4, 0))
 
         ttk.Button(side_b, text="Undo  (Ctrl+Z)", command=self.undo).pack(fill="x", pady=(0, 6))
 
@@ -750,6 +769,8 @@ class App:
             self.torch_items[(x, z)] = self.draw_water(x, z)
         elif v == TRAP:
             self.torch_items[(x, z)] = self.draw_trapdoor(x, z)
+        elif v == TRAP_OPEN:
+            self.torch_items[(x, z)] = self.draw_trapdoor_open(x, z)
 
     def draw_water(self, x, z):
         """Water: little light-blue waves on a blue tile."""
@@ -764,6 +785,24 @@ class App:
             items.append(self.canvas.create_line(*pts, fill="#cfe4ff", width=max(1, c // 12),
                                                  smooth=True, tags="torch"))
         return items
+
+    def draw_trapdoor_open(self, x, z):
+        """Open trapdoor: the hatch swung up, seen edge-on along the top of the
+        square, with the hole showing underneath."""
+        c = self.cell
+        px, py = z * c, (self.d.L - 1 - x) * c
+        u = c / 8.0
+
+        def box(x0, y0, x1, y1, color):
+            return self.canvas.create_rectangle(px + x0 * u, py + y0 * u, px + x1 * u, py + y1 * u,
+                                                fill=color, outline="", tags="torch")
+        return [
+            box(1.6, 2.6, 6.4, 6.6, "#5a4a32"),   # the open hole
+            box(1.2, 1.0, 6.8, 2.4, "#9c6b38"),   # hatch standing up
+            box(1.2, 1.0, 6.8, 1.4, "#b9864c"),   # its top edge
+            box(2.0, 1.5, 2.8, 2.0, "#4a3018"),   # little windows seen edge-on
+            box(5.2, 1.5, 6.0, 2.0, "#4a3018"),
+        ]
 
     def draw_trapdoor(self, x, z):
         """Trapdoor: a wooden hatch with a frame and four little windows."""
@@ -845,7 +884,9 @@ class App:
         water, traps = self.d.count_items()
         text = f"{dig} blocks to dig  |  {torches} torches  |  ~{fuel} fuel (~{fuel // 80 + 1} coal)"
         if water or traps:
-            text += f"  |  at the end: {traps} trapdoors, {water} water buckets"
+            opened = self.d.count_open_traps()
+            tp = f"{traps} trapdoors ({opened} open)" if opened else f"{traps} trapdoors"
+            text += f"  |  at the end: {tp}, {water} water buckets"
         if water and self.show_flow.get():
             d = self.d
             text += f"  |  water spreads to {len(self.flow)} more blocks"
@@ -883,7 +924,8 @@ class App:
     def pen_value(self, erase):
         if erase:
             return KEEP
-        return {"dig": DIG, "keep": KEEP, "torch": TORCH, "water": WATER, "trap": TRAP}.get(self.tool.get())
+        trap = TRAP_OPEN if self.trap_mode.get() == "open" else TRAP
+        return {"dig": DIG, "keep": KEEP, "torch": TORCH, "water": WATER, "trap": trap}.get(self.tool.get())
 
     def on_press(self, e, erase):
         p = self.cell_at(e)
@@ -900,7 +942,19 @@ class App:
         if tool in ("rect", "rectkeep") and not erase:
             self.drag_start = p
             return
+        if tool == "flip" and not erase:
+            self.flip_at(p)
+            return
         self.paint(*p, self.pen_value(erase))
+
+    def flip_at(self, p):
+        """Switch a trapdoor between open and closed (once per square per drag)."""
+        if getattr(self, "last_flip", None) == (p, self.layer):
+            return
+        self.last_flip = (p, self.layer)
+        v = self.d.grid[self.layer][p[0]][p[1]]
+        if v in TRAPS:
+            self.paint(p[0], p[1], TRAP if v == TRAP_OPEN else TRAP_OPEN)
 
     def on_drag(self, e, erase):
         p = self.cell_at(e)
@@ -922,9 +976,13 @@ class App:
             return
         if tool == "start" and not erase:
             return
+        if tool == "flip" and not erase:
+            self.flip_at(p)
+            return
         self.paint(*p, self.pen_value(erase))
 
     def on_release(self, e, erase):
+        self.last_flip = None
         if getattr(self, "dragging_start", False):
             self.dragging_start = False
             self.redraw()
@@ -1356,9 +1414,21 @@ class App:
                         changed += 1
         return changed
 
-    def set_open_traps(self):
-        self.d.open_traps = bool(self.open_traps.get())
-        self.dirty = True
+    def pick_trap_pen(self):
+        self.tool.set("trap")  # choosing open/closed switches to the trapdoor pen
+
+    def set_all_traps(self, value):
+        self.snapshot()
+        n = 0
+        for layer in self.d.grid:
+            for row in layer:
+                for z, v in enumerate(row):
+                    if v in TRAPS and v != value:
+                        row[z] = value
+                        n += 1
+        self.redraw()
+        word = "open" if value == TRAP_OPEN else "closed"
+        self.status.config(text=f"{n} trapdoors set to {word}.", foreground=THEME["ok"])
 
     # ---- tabs (auto-saved) --------------------------------------------
     def tab_path(self, i):
@@ -1622,9 +1692,8 @@ class App:
         self.root.destroy()
 
     def sync_from_design(self):
-        """Update checkboxes after a different design was loaded."""
-        if hasattr(self, "open_traps"):
-            self.open_traps.set(self.d.open_traps)
+        """Update controls after a different design was loaded."""
+        pass
 
     # ---- 3D view --------------------------------------------------------
     def view_3d(self):
@@ -1984,7 +2053,7 @@ const DESIGN = __DESIGN__;
 const FLOW = __FLOW__;   // [x, y, z, level 1-7, falling]
 
 // ---------------------------------------------------------------- parse
-const KEEP = 0, DIG = 1, TORCH = 2, WATER = 3, TRAP = 4;
+const KEEP = 0, DIG = 1, TORCH = 2, WATER = 3, TRAP = 4, TRAP_OPEN = 5;
 let L = 1, W = 1, H = 1, start = [0, 0, 0], grid;
 (function parse() {
   let y = -1, x = 0;
@@ -1993,20 +2062,23 @@ let L = 1, W = 1, H = 1, start = [0, 0, 0], grid;
     if (line.startsWith('size ')) {
       [L, W, H] = line.split(/\s+/).slice(1, 4).map(Number);
       grid = new Uint8Array(L * W * H);
+    } else if (line.startsWith('trapdoors open')) {
+      window.__allOpen = true;
     } else if (line.startsWith('start ')) {
       start = line.split(/\s+/).slice(1, 4).map(Number);
     } else if (line.startsWith('layer ')) {
       y = Number(line.split(/\s+/)[1]); x = 0;
     } else if (grid && y >= 0 && x < L && line && !line.startsWith('minor')) {
       let z = 0;
-      for (const m of line.matchAll(/(\d+)([.#TWD])/g)) {
-        const v = { '#': DIG, 'T': TORCH, 'W': WATER, 'D': TRAP }[m[2]] ?? KEEP;
+      for (const m of line.matchAll(/(\d+)([.#TWDO])/g)) {
+        const v = { '#': DIG, 'T': TORCH, 'W': WATER, 'D': TRAP, 'O': TRAP_OPEN }[m[2]] ?? KEEP;
         for (let n = 0; n < +m[1] && z < W; n++, z++) grid[x + L * (z + W * y)] = v;
       }
       x++;
     }
   }
 })();
+if (window.__allOpen) for (let i = 0; i < grid.length; i++) if (grid[i] === TRAP) grid[i] = TRAP_OPEN;
 const [SX, SY, SZ] = start;
 const at = (x, y, z) => (x < 0 || y < 0 || z < 0 || x >= L || y >= H || z >= W) ? -1 : grid[x + L * (z + W * y)];
 const isChest = (x, y, z) => x === SX - 1 && y === SY && z === SZ;
@@ -2064,6 +2136,7 @@ scene.add(torchGroup);
 const waterGeo = new THREE.BoxGeometry(0.98, 0.9, 0.98);
 const waterMat = new THREE.MeshLambertMaterial({ color: 0x3f7fd6, transparent: true, opacity: 0.55, depthWrite: false });
 const trapGeo = new THREE.BoxGeometry(0.96, 0.19, 0.96);
+const trapOpenGeo = new THREE.BoxGeometry(0.96, 0.96, 0.19);   // swung up against the back edge
 const trapMat = new THREE.MeshLambertMaterial({ color: 0x9c6b38 });
 let itemGroup = new THREE.Group();
 scene.add(itemGroup);
@@ -2194,23 +2267,25 @@ function rebuild() {
 
   scene.remove(itemGroup);
   itemGroup = new THREE.Group();
-  const water = [], traps = [];
+  const water = [], traps = [], trapsOpen = [];
   for (let y = 0; y < H; y++) for (let x = 0; x < L; x++) for (let z = 0; z < W; z++) {
     if (!visibleCut(x, y)) continue;
     const v = at(x, y, z);
     if (v === WATER) water.push([x, y, z]); else if (v === TRAP) traps.push([x, y, z]);
+    else if (v === TRAP_OPEN) trapsOpen.push([x, y, z]);
   }
-  const addInst = (list, geo, mat, dy) => {
+  const addInst = (list, geo, mat, dy, dz = 0) => {
     if (!list.length) return;
     const m = new THREE.InstancedMesh(geo, mat, list.length);
     list.forEach(([x, y, z], i) => {
       toWorld(x, y, z, tmpV);
-      tmpM.makeTranslation(tmpV.x, tmpV.y + dy, tmpV.z);
+      tmpM.makeTranslation(tmpV.x, tmpV.y + dy, tmpV.z + dz);
       m.setMatrixAt(i, tmpM);
     });
     itemGroup.add(m);
   };
   addInst(traps, trapGeo, trapMat, -0.5 + 0.095);
+  addInst(trapsOpen, trapOpenGeo, trapMat, 0, 0.5 - 0.095);
   addInst(water, waterGeo, waterMat, -0.05);
   itemGroup.visible = document.getElementById('items').checked;
   scene.add(itemGroup);
@@ -2251,7 +2326,7 @@ for (let i = 0; i < grid.length; i++) {
   if (grid[i]) digCount++;
   if (grid[i] === TORCH) torchTotal++;
   if (grid[i] === WATER) waterTotal++;
-  if (grid[i] === TRAP) trapTotal++;
+  if (grid[i] === TRAP || grid[i] === TRAP_OPEN) trapTotal++;
 }
 document.getElementById('size').textContent = `${L} long × ${W} wide × ${H} tall`;
 

@@ -79,7 +79,7 @@ end
 -- st values: 0 leave alone, 1 needs digging, 2 open, 3 torch placed, 4 chest
 local L, W, H
 local st, torchAt, waterAt, trapAt = {}, {}, {}, {}
-local openTraps = false -- design says: open trapdoors after placing them
+local openTraps = false -- older design files: "trapdoors open" = open every trapdoor
 local sx, sy, sz = 0, 0, 0 -- start position
 local todo, tunnels = 0, 0
 
@@ -136,7 +136,7 @@ local function loadDesign(path)
       y = tonumber(line:match("^layer (%d+)")); x = 0
     elseif y >= 0 and x < L and line ~= "" then
       local z = 0
-      for count, ch in line:gmatch("(%d+)([%.#TWD])") do
+      for count, ch in line:gmatch("(%d+)([%.#TWDO])") do
         for _ = 1, tonumber(count) do
           if z < W then
             if ch ~= "." then
@@ -144,7 +144,8 @@ local function loadDesign(path)
               st[i] = 1
               if ch == "T" then torchAt[i] = true
               elseif ch == "W" then waterAt[i] = true
-              elseif ch == "D" then trapAt[i] = true end
+              elseif ch == "D" then trapAt[i] = "closed"
+              elseif ch == "O" then trapAt[i] = "open" end
             end
             z = z + 1
           end
@@ -479,8 +480,12 @@ for _ in pairs(trapAt) do trapCount = trapCount + 1 end
 if waterCount + trapCount > 0 then
   print(("At the end: %d trapdoors, %d water buckets"):format(trapCount, waterCount))
 end
-if trapCount > 0 and openTraps then
-  print("Trapdoors get opened: put 1 stick in me")
+local openCount = 0
+for _, how in pairs(trapAt) do
+  if how == "open" or openTraps then openCount = openCount + 1 end
+end
+if openCount > 0 then
+  print(openCount .. " trapdoors get opened: put 1 stick in me")
 end
 print(("Size %d x %d x %d, %d blocks to dig"):format(L, W, H, todo))
 if torchCount > 0 then print(torchCount .. " torches - I'll light the room first") end
@@ -722,6 +727,7 @@ local function placeItems(spots, kind)
     walk(path)
     local h, si = how(x, y, z)
     if not h then break end
+    local wantOpen = kind == "trapdoor" and (spots[si] == "open" or openTraps)
     if not itemSlot(kind) then tripHome(kind) end
     turtle.select(itemSlot(kind) or 1)
     local ok
@@ -735,7 +741,7 @@ local function placeItems(spots, kind)
       done = done + 1
       if kind == "trapdoor" then
         st[si] = 5 -- solid now: walk around it
-        if openTraps then tryOpen(h) end
+        if wantOpen then tryOpen(h) end
       end
     end
     term.setCursorPos(1, 1); term.clearLine()
@@ -759,7 +765,7 @@ local torchesTotal = lit + placed
 if torchesTotal > 0 then print("Placed " .. torchesTotal .. " torches.") end
 if trapsPlaced > 0 then print("Placed " .. trapsPlaced .. " trapdoors.") end
 if waterPlaced > 0 then print("Placed " .. waterPlaced .. " water buckets.") end
-if openTraps and trapsPlaced > 0 then
+if openCount > 0 and trapsPlaced > 0 then
   if trapsOpened > 0 then print("Opened " .. trapsOpened .. " trapdoors.")
   elseif noStick then print("No stick, so trapdoors were left closed.")
   elseif openWorks == false then

@@ -53,7 +53,7 @@ Put the turtle where the design's green **S** is, facing the way the grid points
 | 🕯️ **Torches** | in the turtle | Placed first, so mobs can't spawn while it works |
 | 🚪 **Trapdoors** | in the turtle | Only if your design has them. Placed at the end |
 | 🪣 **Water buckets** | in the turtle | One per water spot. Placed last |
-| 🥢 **1 stick** | in the turtle | Only if you want trapdoors opened (needs the [datapack](#-opening-trapdoors)) |
+| 🥢 **1 stick** | in the turtle | Only if any trapdoors are marked open (needs the [datapack](#-opening-trapdoors)) |
 
 The turtle never burns or unloads torches, trapdoors, water buckets or sticks.
 
@@ -63,7 +63,7 @@ The turtle never burns or unloads torches, trapdoors, water buckets or sticks.
 
 1. **Lights the room.** It digs a path to every torch spot and places each torch from directly above, so torches land on the floor and not the walls.
 2. **Digs bottom up.** It clears layers 1–3 completely, then 4–6, and so on. It stands in the middle layer of each band, so every move clears three blocks.
-3. **Places trapdoors.** It opens them too, if you asked it to.
+3. **Places trapdoors**, and opens the ones you marked open.
 4. **Places water last**, so water can't flow into spots that still need a trapdoor.
 5. **Comes home**, empties into the chest, and tells you what it did.
 
@@ -83,12 +83,14 @@ You look down on **one layer at a time**. The top of the grid is the way the tur
 | ⬛ dark stone | left alone |
 | 🕯️ torch | dug, then a torch is placed on the floor |
 | 🟫 hatch | dug, then a trapdoor is placed (at the end) |
+| 🟫 hatch, swung up | same, then the turtle **opens** it |
 | 🟦 waves | dug, then a water bucket is placed (last) |
 | 🟩 **S** / 🟫 **C** | where the turtle starts / where the chest goes |
 
 ### Drawing tools
 
 - **Pens:** dig, keep (eraser), torch, trapdoor and water. **Right-click always erases.**
+- **Trapdoors, open or closed:** in the *Trapdoors* box, choose whether the trapdoor pen places them **Closed** or **Open**. The **Flip trapdoor** tool switches any trapdoor between the two with a click, and **All open** / **All closed** change every trapdoor at once.
 - **Rectangles:** drag to fill or clear a box.
 - **Turtle start:** drag the **S**, or use the arrow buttons. *Up*/*Down* move it between layers.
 - **This layer:** fill, clear, *Copy to layer above*, or *Copy to ALL layers above*, which turns a floor plan into a room.
@@ -186,7 +188,7 @@ Out of the box, CC: Tweaked doesn't let turtles click trapdoors. To have them op
    - Server: `<server>/world/datapacks/`
 3. Run `/reload` (or reopen the world), and give the turtle **1 stick**.
 
-In the designer, **Trapdoors → Open them after placing** turns this on or off for each design. Without the datapack, the turtle notices and leaves them closed.
+In the designer, mark each trapdoor **open** or **closed** (see *Drawing tools*). Only the ones marked open get opened. Without the datapack, the turtle notices and leaves them closed.
 
 ---
 
@@ -260,10 +262,9 @@ Check the designer's tabs first, since they save automatically. Every upload is 
 minor-design 1
 size <length> <width> <height>
 start <x> <y> <z>
-trapdoors open          (optional)
 layer 0
 <one line per row, run-length encoded, e.g. 3.10#1T>
 ```
 
-`.` keep · `#` dig · `T` torch · `D` trapdoor · `W` water. `x` is forward, `z` is right, and `y` is up.
+`.` keep · `#` dig · `T` torch · `D` trapdoor · `O` open trapdoor · `W` water. `x` is forward, `z` is right, and `y` is up.
 </details>
