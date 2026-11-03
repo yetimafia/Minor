@@ -77,14 +77,32 @@ def github(method, url, token, body=None):
             return e.code, {}
 
 COLORS = {
-    KEEP: "#3b3b3b",
-    DIG: "#e9dcb5",
-    TORCH: "#ffa200",
-    "ghost": "#565663",   # kept here, but dug on the layer below
     "start": "#3fbf5a",
     "chest": "#8a5a2b",
-    "line": "#2a2a2a",
+    "line": "#1e1f23",
 }
+
+# tile looks: (base, highlight, shadow)
+STYLE = {
+    DIG:     ("#e6cf98", "#fff3d2", "#b38f52"),   # dug - warm sandy tile
+    TORCH:   ("#efd492", "#fff6d8", "#b8904c"),
+    KEEP:    ("#3e4046", "#4b4e55", "#303237"),   # left alone - dark stone
+    "below": ("#3c5779", "#4d6a90", "#2e4460"),   # dug on the layer below (blue)
+    "above": ("#7a4545", "#935656", "#5e3434"),   # dug on the layer above (red)
+}
+
+
+def shade(color, amount):
+    """Lighten (+) or darken (-) a #rrggbb colour."""
+    r, g, b = (int(color[i:i + 2], 16) for i in (1, 3, 5))
+    r, g, b = (max(0, min(255, v + amount)) for v in (r, g, b))
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
+def jitter(x, y, z):
+    """Small fixed per-block colour variation so tiles look textured."""
+    h = (x * 73856093) ^ (z * 19349663) ^ (y * 83492791)
+    return (h % 7 - 3) * 4
 
 
 class Design:
@@ -200,7 +218,7 @@ class App:
         self.vH = tk.IntVar(value=self.d.H)
         self.tool = tk.StringVar(value="dig")
         self.spacing = tk.IntVar(value=8)
-        self.ghost = tk.BooleanVar(value=True)
+        self.ghost = tk.StringVar(value="below")
         self.settings = load_settings()
         self.uploaded = {}  # design name -> commit sha of last upload
         self.command = tk.StringVar(value="")
@@ -222,10 +240,12 @@ class App:
         body = ttk.Frame(self.root, padding=6)
         body.pack(fill="both", expand=True)
 
-        side = ttk.Frame(body)
-        side.pack(side="left", fill="y", padx=(0, 8))
+        side_a = ttk.Frame(body)
+        side_a.pack(side="left", fill="y", padx=(0, 6))
+        side_b = ttk.Frame(body)
+        side_b.pack(side="left", fill="y", padx=(0, 8))
 
-        lay = ttk.LabelFrame(side, text="Layer", padding=6)
+        lay = ttk.LabelFrame(side_a, text="Layer", padding=6)
         lay.pack(fill="x", pady=(0, 6))
         row = ttk.Frame(lay)
         row.pack()
@@ -233,10 +253,17 @@ class App:
         self.layer_label = ttk.Label(row, text="", width=10, anchor="center")
         self.layer_label.pack(side="left")
         ttk.Button(row, text="▲", width=3, command=lambda: self.change_layer(1)).pack(side="left")
-        ttk.Checkbutton(lay, text="Show layer below", variable=self.ghost,
-                        command=self.redraw).pack(anchor="w", pady=(4, 0))
+        ttk.Label(lay, text="Show neighbour layer:").pack(anchor="w", pady=(6, 0))
+        gr = ttk.Frame(lay)
+        gr.pack(anchor="w")
+        for value, text in (("off", "Off"), ("below", "Below"), ("above", "Above")):
+            ttk.Radiobutton(gr, text=text, value=value, variable=self.ghost,
+                            command=self.redraw).pack(side="left")
+        self.ghost_hint = ttk.Label(lay, text="", foreground="#777")
+        self.ghost_hint.pack(anchor="w")
+        ttk.Label(lay, text="(G key switches)", foreground="#999").pack(anchor="w")
 
-        tools = ttk.LabelFrame(side, text="Tool (left mouse)", padding=6)
+        tools = ttk.LabelFrame(side_a, text="Tool (left mouse)", padding=6)
         tools.pack(fill="x", pady=(0, 6))
         for value, text in (("dig", "Dig pen"), ("keep", "Keep pen (eraser)"),
                             ("torch", "Torch pen"), ("rect", "Dig rectangle"),
@@ -244,21 +271,23 @@ class App:
             ttk.Radiobutton(tools, text=text, value=value, variable=self.tool).pack(anchor="w")
         ttk.Label(tools, text="Right mouse = eraser", foreground="#777").pack(anchor="w", pady=(4, 0))
 
-        lay_ops = ttk.LabelFrame(side, text="This layer", padding=6)
+        lay_ops = ttk.LabelFrame(side_a, text="This layer", padding=6)
         lay_ops.pack(fill="x", pady=(0, 6))
         ttk.Button(lay_ops, text="Fill layer", command=lambda: self.fill_layer(DIG)).pack(fill="x")
         ttk.Button(lay_ops, text="Clear layer", command=lambda: self.fill_layer(KEEP)).pack(fill="x")
         ttk.Button(lay_ops, text="Copy to layer above", command=self.copy_up).pack(fill="x")
         ttk.Button(lay_ops, text="Copy to ALL layers above", command=self.copy_all_up).pack(fill="x")
 
-        shapes = ttk.LabelFrame(side, text="Whole design", padding=6)
+        shapes = ttk.LabelFrame(side_b, text="Shapes", padding=6)
         shapes.pack(fill="x", pady=(0, 6))
+        ttk.Button(shapes, text="★ Shape through layers...", command=self.layer_shape_dialog).pack(fill="x", pady=(0, 4))
+        ttk.Label(shapes, text="Whole design:", foreground="#777").pack(anchor="w")
         for text, fn in (("Box (fill all)", self.shape_box), ("Sphere", self.shape_sphere),
                          ("Dome", self.shape_dome), ("Cylinder", self.shape_cylinder),
                          ("Tunnel (arch)", self.shape_arch), ("Clear all", self.shape_clear)):
             ttk.Button(shapes, text=text, command=fn).pack(fill="x")
 
-        tor = ttk.LabelFrame(side, text="Torches", padding=6)
+        tor = ttk.LabelFrame(side_b, text="Torches", padding=6)
         tor.pack(fill="x", pady=(0, 6))
         r = ttk.Frame(tor)
         r.pack(fill="x")
@@ -268,9 +297,9 @@ class App:
         ttk.Button(tor, text="Auto place torches", command=self.auto_torches).pack(fill="x", pady=(4, 0))
         ttk.Button(tor, text="Remove all torches", command=self.clear_torches).pack(fill="x")
 
-        ttk.Button(side, text="Undo  (Ctrl+Z)", command=self.undo).pack(fill="x", pady=(0, 6))
+        ttk.Button(side_b, text="Undo  (Ctrl+Z)", command=self.undo).pack(fill="x", pady=(0, 6))
 
-        tp = ttk.LabelFrame(side, text="Turtle start (drag the S)", padding=6)
+        tp = ttk.LabelFrame(side_a, text="Turtle start (drag the S)", padding=6)
         tp.pack(fill="x", pady=(0, 6))
         pad = ttk.Frame(tp)
         pad.pack()
@@ -279,8 +308,8 @@ class App:
         for text, r, c, delta in arrows:
             ttk.Button(pad, text=text, width=3,
                        command=lambda d=delta: self.move_start(*d)).grid(row=r, column=c)
-        ttk.Button(pad, text="Up", width=4, command=lambda: self.move_start(0, 1, 0)).grid(row=0, column=3, padx=(8, 0))
-        ttk.Button(pad, text="Down", width=4, command=lambda: self.move_start(0, -1, 0)).grid(row=2, column=3, padx=(8, 0))
+        ttk.Button(pad, text="Up", width=6, command=lambda: self.move_start(0, 1, 0)).grid(row=0, column=3, padx=(8, 0))
+        ttk.Button(pad, text="Down", width=6, command=lambda: self.move_start(0, -1, 0)).grid(row=2, column=3, padx=(8, 0))
         self.start_label = ttk.Label(tp, text="", foreground="#777")
         self.start_label.pack(pady=(4, 0))
         ttk.Button(tp, text="Go to turtle's layer", command=self.goto_start_layer).pack(fill="x")
@@ -299,6 +328,8 @@ class App:
         self.canvas.bind("<Button-2>", lambda e: self.on_press(e, True))  # Mac right-click
         self.canvas.bind("<B2-Motion>", lambda e: self.on_drag(e, True))
         self.root.bind("<Control-z>", lambda e: self.undo())
+        self.root.bind("<g>", lambda e: self.cycle_ghost())
+        self.root.bind("<G>", lambda e: self.cycle_ghost())
         self.root.bind("<Prior>", lambda e: self.change_layer(1))
         self.root.bind("<Next>", lambda e: self.change_layer(-1))
 
@@ -329,23 +360,75 @@ class App:
         self.canvas.delete("all")
         self.canvas.config(width=d.W * c + 1, height=(d.L + 1) * c + 1)
         self.rects = {}
+        self.bevels = {}
+        self.torch_items = {}
+        bw = max(1, c // 9)
         for x in range(d.L):
             for z in range(d.W):
-                sy = (d.L - 1 - x) * c
-                sx = z * c
+                py = (d.L - 1 - x) * c
+                px = z * c
                 self.rects[(x, z)] = self.canvas.create_rectangle(
-                    sx, sy, sx + c, sy + c, outline=COLORS["line"])
+                    px, py, px + c, py + c, outline=COLORS["line"])
+                o = bw / 2 + 1
+                hi = self.canvas.create_line(px + o, py + c - o, px + o, py + o, px + c - o, py + o,
+                                             width=bw, capstyle="projecting")
+                lo = self.canvas.create_line(px + c - o, py + o, px + c - o, py + c - o, px + o, py + c - o,
+                                             width=bw, capstyle="projecting")
+                self.bevels[(x, z)] = (hi, lo)
         self.redraw()
+
+    def tile_style(self, x, z):
+        d, y = self.d, self.layer
+        v = d.grid[y][x][z]
+        key = v
+        if v == KEEP:
+            g = self.ghost.get()
+            if g == "below" and y > 0 and d.grid[y - 1][x][z]:
+                key = "below"
+            elif g == "above" and y + 1 < d.H and d.grid[y + 1][x][z]:
+                key = "above"
+        base, hi, lo = STYLE[key]
+        j = jitter(x, y, z)
+        return shade(base, j), shade(hi, j // 2), shade(lo, j // 2), v
+
+    def draw_cell(self, x, z):
+        base, hi, lo, v = self.tile_style(x, z)
+        self.canvas.itemconfig(self.rects[(x, z)], fill=base)
+        h, l = self.bevels[(x, z)]
+        self.canvas.itemconfig(h, fill=hi)
+        self.canvas.itemconfig(l, fill=lo)
+        old = self.torch_items.pop((x, z), None)
+        if old:
+            for item in old:
+                self.canvas.delete(item)
+        if v == TORCH:
+            self.torch_items[(x, z)] = self.draw_torch(x, z)
+
+    def draw_torch(self, x, z):
+        """A little pixel-art torch: wooden stick with a glowing flame."""
+        c = self.cell
+        px, py = z * c, (self.d.L - 1 - x) * c
+        u = c / 8.0
+
+        def box(x0, y0, x1, y1, color):
+            return self.canvas.create_rectangle(px + x0 * u, py + y0 * u, px + x1 * u, py + y1 * u,
+                                                fill=color, outline="", tags="torch")
+        return [
+            box(2.4, 1.0, 5.6, 4.4, "#fbe3a0"),   # warm glow on the tile
+            box(3.3, 3.6, 4.7, 7.3, "#8b5a2b"),   # stick
+            box(4.0, 3.6, 4.7, 7.3, "#6b4220"),   # stick shadow
+            box(3.3, 3.6, 4.7, 4.1, "#3a2614"),   # charred top
+            box(2.9, 1.9, 5.1, 3.6, "#ff8c1a"),   # flame
+            box(3.3, 1.1, 4.7, 1.9, "#ffb627"),   # flame tip
+            box(3.5, 2.2, 4.5, 3.4, "#ffe45c"),   # hot core
+            box(3.75, 0.7, 4.25, 1.1, "#fff2a8"),  # spark
+        ]
 
     def redraw(self):
         d, y = self.d, self.layer
         self.canvas.delete("marker")
-        for (x, z), item in self.rects.items():
-            v = d.grid[y][x][z]
-            color = COLORS[v]
-            if v == KEEP and self.ghost.get() and y > 0 and d.grid[y - 1][x][z]:
-                color = COLORS["ghost"]
-            self.canvas.itemconfig(item, fill=color)
+        for (x, z) in self.rects:
+            self.draw_cell(x, z)
         c = self.cell
         sx, sy, sz = d.start
         if sy == y:
@@ -354,14 +437,22 @@ class App:
                 self.mark(sx - 1, sz, "C", COLORS["chest"])
             else:  # chest sits just outside the grid
                 px, py = sz * c, d.L * c
-                self.canvas.create_rectangle(px, py, px + c, py + c, fill=COLORS["chest"],
+                self.canvas.create_rectangle(px + 1, py + 1, px + c - 1, py + c - 1, fill=COLORS["chest"],
                                              outline="", tags="marker")
                 self.canvas.create_text(px + c / 2, py + c / 2, text="C", fill="white",
-                                        tags="marker", font=("TkDefaultFont", max(7, c // 2)))
+                                        tags="marker", font=("TkDefaultFont", max(7, c // 2), "bold"))
         self.layer_label.config(text=f"{y + 1} of {d.H}")
         if hasattr(self, "start_label"):
             self.start_label.config(text=f"forward {sx}, right {sz}, layer {sy + 1}")
+        if hasattr(self, "ghost_hint"):
+            self.ghost_hint.config(text={"off": "", "below": "Blue = dug on the layer below",
+                                         "above": "Red = dug on the layer above"}[self.ghost.get()])
         self.update_stats()
+
+    def cycle_ghost(self):
+        order = ["off", "below", "above"]
+        self.ghost.set(order[(order.index(self.ghost.get()) + 1) % 3])
+        self.redraw()
 
     def mark(self, x, z, text, color):
         c = self.cell
@@ -392,12 +483,10 @@ class App:
         return None
 
     def paint(self, x, z, value):
+        if self.d.grid[self.layer][x][z] == value:
+            return
         self.d.grid[self.layer][x][z] = value
-        v = value
-        color = COLORS[v]
-        if v == KEEP and self.ghost.get() and self.layer > 0 and self.d.grid[self.layer - 1][x][z]:
-            color = COLORS["ghost"]
-        self.canvas.itemconfig(self.rects[(x, z)], fill=color)
+        self.draw_cell(x, z)
 
     def pen_value(self, erase):
         if erase:
@@ -631,6 +720,158 @@ class App:
         self.name.set(os.path.splitext(os.path.basename(path))[0])
         self.layer = 0
         self.rebuild_grid()
+
+    # ---- shapes through layers -----------------------------------------
+    LAYER_SHAPES = ["Rectangle", "Circle / oval", "Ring (hollow circle)", "Walls (hollow rectangle)",
+                    "Diamond", "Plus / cross"]
+
+    def layer_shape_dialog(self):
+        d = self.d
+        if getattr(self, "shape_win", None) and self.shape_win.winfo_exists():
+            self.shape_win.lift()
+            return
+        win = self.shape_win = tk.Toplevel(self.root)
+        win.title("Shape through layers")
+        win.transient(self.root)
+        f = ttk.Frame(win, padding=10)
+        f.pack(fill="both")
+
+        v = {
+            "shape": tk.StringVar(value=self.LAYER_SHAPES[1]),
+            "len0": tk.IntVar(value=d.L), "wid0": tk.IntVar(value=d.W),
+            "len1": tk.IntVar(value=d.L), "wid1": tk.IntVar(value=d.W),
+            "cx": tk.IntVar(value=(d.L - 1) // 2), "cz": tk.IntVar(value=(d.W - 1) // 2),
+            "from": tk.IntVar(value=self.layer + 1), "to": tk.IntVar(value=d.H),
+            "thick": tk.IntVar(value=1), "mode": tk.StringVar(value="dig"),
+        }
+        row = 0
+
+        def label(text, r, c=0, **kw):
+            ttk.Label(f, text=text, **kw).grid(row=r, column=c, sticky="w", pady=2, padx=(0, 6))
+
+        def spin(var, r, c, hi=MAX):
+            ttk.Spinbox(f, from_=0, to=hi, textvariable=var, width=5).grid(row=r, column=c, sticky="w", pady=2)
+
+        label("Shape", row)
+        ttk.Combobox(f, textvariable=v["shape"], values=self.LAYER_SHAPES, state="readonly",
+                     width=26).grid(row=row, column=1, columnspan=3, sticky="w")
+        row += 1
+        label("", row)
+        label("Length (fwd)", row, 1, foreground="#777")
+        label("Width (right)", row, 2, foreground="#777")
+        row += 1
+        label("Size on FIRST layer", row); spin(v["len0"], row, 1); spin(v["wid0"], row, 2)
+        row += 1
+        label("Size on LAST layer", row); spin(v["len1"], row, 1); spin(v["wid1"], row, 2)
+        row += 1
+        label("Centre block", row); spin(v["cx"], row, 1); spin(v["cz"], row, 2)
+        ttk.Button(f, text="Middle", command=lambda: (v["cx"].set((self.d.L - 1) // 2),
+                                                       v["cz"].set((self.d.W - 1) // 2))).grid(row=row, column=3)
+        row += 1
+        label("Layers from / to", row); spin(v["from"], row, 1); spin(v["to"], row, 2)
+        ttk.Button(f, text="All", command=lambda: (v["from"].set(1), v["to"].set(self.d.H))).grid(row=row, column=3)
+        row += 1
+        label("Wall thickness", row); spin(v["thick"], row, 1, 32)
+        label("(ring, walls, plus)", row, 2, foreground="#777")
+        row += 1
+        label("Mode", row)
+        mf = ttk.Frame(f)
+        mf.grid(row=row, column=1, columnspan=3, sticky="w")
+        ttk.Radiobutton(mf, text="Dig it out", value="dig", variable=v["mode"]).pack(side="left")
+        ttk.Radiobutton(mf, text="Leave it solid", value="keep", variable=v["mode"]).pack(side="left", padx=6)
+        row += 1
+
+        def preset(kind):
+            L0, W0 = v["len0"].get(), v["wid0"].get()
+            if kind == "straight":
+                v["len1"].set(L0); v["wid1"].set(W0)
+            elif kind == "shrink":
+                v["len1"].set(1); v["wid1"].set(1)
+            elif kind == "grow":
+                v["len1"].set(L0); v["wid1"].set(W0)
+                v["len0"].set(1); v["wid0"].set(1)
+
+        label("Quick sizes", row)
+        pf = ttk.Frame(f)
+        pf.grid(row=row, column=1, columnspan=3, sticky="w")
+        ttk.Button(pf, text="Straight up", command=lambda: preset("straight")).pack(side="left")
+        ttk.Button(pf, text="Pyramid / cone", command=lambda: preset("shrink")).pack(side="left", padx=4)
+        ttk.Button(pf, text="Upside down", command=lambda: preset("grow")).pack(side="left")
+        row += 1
+
+        ttk.Label(f, foreground="#777", justify="left", text=(
+            "Tip: Circle + Pyramid/cone = a cone. Rectangle + Pyramid = a pyramid.\n"
+            "Ring with the same size top and bottom = a round tower.")).grid(
+            row=row, column=0, columnspan=4, sticky="w", pady=(6, 0))
+        row += 1
+
+        bf = ttk.Frame(f)
+        bf.grid(row=row, column=0, columnspan=4, sticky="e", pady=(10, 0))
+
+        def apply():
+            try:
+                vals = {k: var.get() for k, var in v.items()}
+            except (tk.TclError, ValueError):
+                messagebox.showerror("Shape", "Please use whole numbers.", parent=win)
+                return
+            self.snapshot()
+            n = self.apply_layer_shape(vals)
+            self.redraw()
+            self.status.config(text=f"Shape applied: {n} blocks changed. (Ctrl+Z to undo)", foreground="#3a7")
+
+        ttk.Button(bf, text="Undo", command=self.undo).pack(side="left")
+        ttk.Button(bf, text="Apply", command=apply).pack(side="left", padx=6)
+        ttk.Button(bf, text="Close", command=win.destroy).pack(side="left")
+
+    def apply_layer_shape(self, o):
+        """Stamp a 2D shape onto a range of layers, resizing it between the
+        first and last layer. Returns how many blocks changed."""
+        d = self.d
+        y0 = max(1, min(d.H, int(o["from"]))) - 1
+        y1 = max(1, min(d.H, int(o["to"]))) - 1
+        if y1 < y0:
+            y0, y1 = y1, y0
+        shape = o["shape"]
+        t = max(1, int(o["thick"]))
+        dig = o["mode"] == "dig"
+        changed = 0
+        for y in range(y0, y1 + 1):
+            f = 0.0 if y1 == y0 else (y - y0) / (y1 - y0)
+            ln = max(1, round(o["len0"] + (o["len1"] - o["len0"]) * f))
+            wd = max(1, round(o["wid0"] + (o["wid1"] - o["wid0"]) * f))
+            x0 = int(o["cx"]) - (ln - 1) // 2
+            z0 = int(o["cz"]) - (wd - 1) // 2
+            x1, z1 = x0 + ln - 1, z0 + wd - 1
+            mx, mz = (x0 + x1 + 1) / 2.0, (z0 + z1 + 1) / 2.0
+            a, b = ln / 2.0, wd / 2.0
+            for x in range(max(0, x0), min(d.L - 1, x1) + 1):
+                for z in range(max(0, z0), min(d.W - 1, z1) + 1):
+                    u = (x + 0.5 - mx) / a
+                    w = (z + 0.5 - mz) / b
+                    if shape.startswith("Rectangle"):
+                        inside = True
+                    elif shape.startswith("Circle"):
+                        inside = u * u + w * w <= 1.0
+                    elif shape.startswith("Ring"):
+                        ia, ib = a - t, b - t
+                        inner = ia > 0 and ib > 0 and ((x + 0.5 - mx) / ia) ** 2 + ((z + 0.5 - mz) / ib) ** 2 < 1.0
+                        inside = u * u + w * w <= 1.0 and not inner
+                    elif shape.startswith("Walls"):
+                        inside = x < x0 + t or x > x1 - t or z < z0 + t or z > z1 - t
+                    elif shape.startswith("Diamond"):
+                        inside = abs(u) + abs(w) <= 1.0
+                    else:  # plus / cross
+                        inside = abs(x + 0.5 - mx) <= t / 2.0 or abs(z + 0.5 - mz) <= t / 2.0
+                    if not inside:
+                        continue
+                    cur = d.grid[y][x][z]
+                    if dig and cur == KEEP:
+                        d.grid[y][x][z] = DIG
+                        changed += 1
+                    elif not dig and cur != KEEP:
+                        d.grid[y][x][z] = KEEP
+                        changed += 1
+        return changed
 
     # ---- turtle start -------------------------------------------------
     def move_start(self, dx, dy, dz):
