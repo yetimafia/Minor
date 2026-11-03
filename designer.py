@@ -551,6 +551,7 @@ class App:
         ttk.Button(top, text="Apply size", command=self.apply_size).pack(side="left")
         ttk.Button(top, text="⟳ Update designer", command=self.update_designer).pack(side="right")
         ttk.Button(top, text="3D view", style="Accent.TButton", command=self.view_3d).pack(side="right", padx=6)
+        ttk.Button(top, text="Turtle setup", style="Accent.TButton", command=self.show_setup).pack(side="right")
 
         tabs = ttk.Frame(self.root, padding=(6, 2, 6, 0))
         tabs.pack(fill="x")
@@ -1694,6 +1695,181 @@ class App:
     def sync_from_design(self):
         """Update controls after a different design was loaded."""
         pass
+
+    # ---- turtle setup (what to put in the turtle) ----------------------
+    TURTLE_FUEL_LIMIT = 20000   # a normal turtle; advanced turtles hold 100000
+
+    def setup_plan(self):
+        """Work out what the turtle needs for this design, slot by slot."""
+        d = self.d
+        dig, torches = d.count()
+        water, traps = d.count_items()
+        opened = d.count_open_traps()
+        fuel = int((dig / 2.5 + d.L + d.W + d.H) * 1.15) + 50   # a little extra for trips home
+        coal_needed = -(-fuel // 80)
+        coal_now = min(coal_needed, self.TURTLE_FUEL_LIMIT // 80)  # it can't hold more fuel than this
+        slots = []      # (kind, count, label)
+        left = coal_now
+        while left > 0:
+            slots.append(("coal", min(64, left), "Coal"))
+            left -= 64
+        coal_slots = len(slots)
+        for kind, total, label, per in (("torch", torches, "Torches", 64), ("trapdoor", traps, "Trapdoors", 64),
+                                        ("stick", 1 if opened else 0, "Stick", 64)):
+            left = total
+            while left > 0:
+                slots.append((kind, min(per, left), label))
+                left -= per
+        # water buckets don't stack: load what fits and keep 2 slots free for dug
+        # blocks (coal slots free up as soon as it's burned at the start)
+        others = len(slots) - coal_slots
+        room = max(0, min(16 - len(slots), 14 - others))
+        water_now = min(water, room)
+        slots += [("water", 1, "Water bucket")] * water_now
+        return {"dig": dig, "torches": torches, "water": water, "water_now": water_now, "traps": traps,
+                "opened": opened,
+                "fuel": fuel, "coal_needed": coal_needed, "coal_now": coal_now, "coal_slots": coal_slots,
+                "slots": slots}
+
+    def show_setup(self):
+        if getattr(self, "setup_win", None) and self.setup_win.winfo_exists():
+            self.setup_win.destroy()
+        t = THEME
+        win = self.setup_win = tk.Toplevel(self.root)
+        win.title(f"Turtle setup - {self.name.get()}")
+        win.transient(self.root)
+        f = ttk.Frame(win, padding=14)
+        f.pack(fill="both", expand=True)
+        plan = self.setup_plan()
+        slots = plan["slots"]
+
+        ttk.Label(f, text="What to put in the turtle", font=(UI_FONT, 13, "bold"),
+                  foreground=t["heading"]).grid(row=0, column=0, columnspan=2, sticky="w")
+        ttk.Label(f, text=f"for '{self.name.get()}'  -  {plan['dig']:,} blocks to dig",
+                  foreground=t["muted"]).grid(row=1, column=0, columnspan=2, sticky="w", pady=(0, 10))
+
+        # ---- the 4x4 inventory, drawn like the in-game one
+        S, G = 62, 6
+        cv = tk.Canvas(f, width=4 * S + 5 * G, height=4 * S + 5 * G, bg="#8b8b8b", highlightthickness=0)
+        cv.grid(row=2, column=0, sticky="n")
+        for i in range(16):
+            r, c = divmod(i, 4)
+            x0, y0 = G + c * (S + G), G + r * (S + G)
+            cv.create_rectangle(x0, y0, x0 + S, y0 + S, fill="#5f5f5f", outline="")
+            cv.create_line(x0, y0 + S, x0 + S, y0 + S, x0 + S, y0, fill="#c6c6c6")   # Minecraft-style slot bevel
+            cv.create_line(x0, y0 + S, x0, y0, x0 + S, y0, fill="#373737")
+            cv.create_text(x0 + 5, y0 + 4, text=str(i + 1), anchor="nw", fill="#9a9a9a", font=(UI_FONT, 7))
+            if i < len(slots):
+                kind, count, _ = slots[i]
+                self.draw_item(cv, kind, x0, y0, S)
+                if count > 1 or kind == "coal":
+                    cv.create_text(x0 + S - 4, y0 + S - 2, text=str(count), anchor="se", fill="#3f3f3f",
+                                   font=(UI_FONT, 12, "bold"))
+                    cv.create_text(x0 + S - 5, y0 + S - 3, text=str(count), anchor="se", fill="white",
+                                   font=(UI_FONT, 12, "bold"))
+        free = 16 - len(slots) + plan["coal_slots"]   # coal is burned at the start, freeing its slots
+        ttk.Label(f, text="Slot numbers are just a tidy suggestion -\nthe turtle finds items in any slot.",
+                  foreground=t["muted"], justify="left").grid(row=3, column=0, sticky="w", pady=(6, 0))
+
+        # ---- right side: the checklist + where the chest goes
+        side = ttk.Frame(f, padding=(18, 0, 0, 0))
+        side.grid(row=2, column=1, rowspan=2, sticky="n")
+        lines = []
+        coal = plan["coal_now"]
+        coal_note = "burned as soon as it starts"
+        if plan["coal_needed"] > coal:
+            coal_note += f"; it'll ask for ~{plan['coal_needed'] - coal} more partway through"
+        lines.append(("coal", f"{coal} coal", coal_note + f" (about {plan['fuel']:,} fuel in all)"))
+        if plan["torches"]:
+            lines.append(("torch", f"{plan['torches']} torches", "placed first, so mobs can't spawn"))
+        if plan["traps"]:
+            extra = f", {plan['opened']} get opened" if plan["opened"] else ""
+            lines.append(("trapdoor", f"{plan['traps']} trapdoors", f"placed near the end{extra}"))
+        if plan["water"]:
+            wn, wt = plan["water_now"], plan["water"]
+            if wn < wt:
+                lines.append(("water", f"{wn} water buckets now ({wt} in all)",
+                              f"they don't stack, so load {wn} - it comes home and asks for the other "
+                              f"{wt - wn} when it runs out. Placed last."))
+            else:
+                lines.append(("water", f"{wt} water bucket{'s' if wt != 1 else ''}", "one per water spot, placed last"))
+        if plan["opened"]:
+            lines.append(("stick", "1 stick", "used to click trapdoors open (needs the datapack)"))
+        for i, (kind, title, note) in enumerate(lines):
+            icv = tk.Canvas(side, width=34, height=34, bg=t["bg"], highlightthickness=0)
+            icv.grid(row=i, column=0, sticky="nw", pady=3)
+            self.draw_item(icv, kind, 0, 0, 34)
+            cell = ttk.Frame(side)
+            cell.grid(row=i, column=1, sticky="w", padx=(8, 0))
+            ttk.Label(cell, text=title, font=(UI_FONT, 10, "bold")).pack(anchor="w")
+            ttk.Label(cell, text=note, foreground=t["muted"], wraplength=290, justify="left").pack(anchor="w")
+        row = len(lines)
+
+        # warnings
+        warn = []
+        if free < 1:
+            warn.append("Too many items to fit! Leave at least 1 slot empty, or the turtle can't dig.")
+        elif free < 4:
+            warn.append(f"Only {free} empty slots for dug blocks once the coal is burned, so it'll walk "
+                        "back to the chest often.")
+        if plan["water_now"] < plan["water"]:
+            warn.append(f"Keep {plan['water'] - plan['water_now']} more water buckets ready next to the chest.")
+        for wtxt in warn:
+            ttk.Label(side, text="!  " + wtxt, foreground=t["warn"], wraplength=330, justify="left").grid(
+                row=row, column=0, columnspan=2, sticky="w", pady=(6, 0))
+            row += 1
+
+        # where things go: chest behind the turtle on the S
+        ttk.Label(side, text="Where it goes", font=(UI_FONT, 10, "bold"), foreground=t["heading"]).grid(
+            row=row, column=0, columnspan=2, sticky="w", pady=(12, 4))
+        row += 1
+        pic = tk.Canvas(side, width=330, height=118, bg=t["grid_bg"], highlightthickness=0)
+        pic.grid(row=row, column=0, columnspan=2, sticky="w")
+        cs, bx = 30, 40
+        # turtle (S) and chest (C), turtle facing up into the room
+        pic.create_rectangle(bx, 6, bx + cs, 6 + cs, fill=STYLE[DIG][0], outline=COLORS["line"])
+        pic.create_rectangle(bx, 6 + cs, bx + cs, 6 + 2 * cs, fill=COLORS["start"], outline=COLORS["line"])
+        pic.create_text(bx + cs / 2, 6 + 1.5 * cs, text="S", fill="white", font=(UI_FONT, 12, "bold"))
+        pic.create_rectangle(bx, 6 + 2 * cs, bx + cs, 6 + 3 * cs, fill=COLORS["chest"], outline=COLORS["line"])
+        pic.create_text(bx + cs / 2, 6 + 2.5 * cs, text="C", fill="white", font=(UI_FONT, 12, "bold"))
+        pic.create_line(bx + cs / 2, 6 + cs + 4, bx + cs / 2, 10, arrow="last", fill="white", width=2)
+        sx, sy, sz = self.d.start
+        pic.create_text(bx + cs + 14, 20, anchor="nw", fill=t["text"], width=250, font=(UI_FONT, 9), text=(
+            f"1. Put the turtle on the green S (layer {sy + 1}), facing the way the grid points (up).\n"
+            "2. Put a chest right behind it.\n"
+            "3. Fill the turtle as shown, then paste the turtle command."))
+
+        btns = ttk.Frame(f)
+        btns.grid(row=4, column=0, columnspan=2, sticky="e", pady=(12, 0))
+        ttk.Button(btns, text="Refresh", command=self.show_setup).pack(side="left")
+        ttk.Button(btns, text="Close", command=win.destroy).pack(side="left", padx=(6, 0))
+
+    def draw_item(self, cv, kind, x0, y0, size):
+        """Little pixel-art item pictures for the setup window."""
+        u = size / 16.0
+
+        def px(a, b, c, d, color):
+            cv.create_rectangle(x0 + a * u, y0 + b * u, x0 + c * u, y0 + d * u, fill=color, outline="")
+        if kind == "coal":
+            px(4, 5, 12, 12, "#2b2b2b"); px(5, 4, 11, 5, "#2b2b2b"); px(3, 7, 4, 11, "#2b2b2b")
+            px(12, 6, 13, 11, "#2b2b2b"); px(5, 12, 11, 13, "#2b2b2b")
+            px(6, 6, 7, 7, "#5a5a5a"); px(9, 8, 10, 9, "#5a5a5a"); px(7, 10, 8, 11, "#4a4a4a")
+        elif kind == "torch":
+            px(7, 6, 9, 14, "#8b5a2b"); px(8, 6, 9, 14, "#6b4220")
+            px(6, 3, 10, 6, "#ff8c1a"); px(7, 2, 9, 3, "#ffb627"); px(7, 4, 9, 6, "#ffe45c")
+        elif kind == "trapdoor":
+            px(2, 2, 14, 14, "#9c6b38"); px(2, 2, 14, 3, "#b9864c")
+            for a, b in ((4, 4), (9, 4), (4, 9), (9, 9)):
+                px(a, b, a + 3, b + 3, "#4a3018")
+        elif kind == "water":
+            px(4, 4, 12, 5, "#a8a8a8"); px(4, 5, 12, 7, "#3f7fd6")          # rim + water
+            px(4, 7, 5, 12, "#9a9a9a"); px(11, 7, 12, 12, "#9a9a9a")
+            px(5, 7, 11, 12, "#bdbdbd"); px(5, 12, 11, 13, "#8a8a8a")
+            px(6, 5, 8, 6, "#7fb0f0")
+        elif kind == "stick":
+            for k in range(9):
+                px(4 + k, 12 - k, 5 + k, 13 - k, "#8b5a2b")
+                px(5 + k, 12 - k, 6 + k, 13 - k, "#6b4220")
 
     # ---- 3D view --------------------------------------------------------
     def view_3d(self):

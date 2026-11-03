@@ -57,6 +57,10 @@ Put the turtle where the design's green **S** is, facing the way the grid points
 
 The turtle never burns or unloads torches, trapdoors, water buckets or sticks.
 
+> 🧰 **Not sure how much to bring?** Click **Turtle setup** in the designer. It works out exactly what *your* design needs and shows it in the turtle's inventory:
+>
+> <img src="docs/setup.png" alt="Turtle setup window" width="560">
+
 ---
 
 ## 🧭 What the turtle does, in order
@@ -159,6 +163,7 @@ You don't need Git installed.
 ### Other handy buttons
 
 - **Open from URL…** loads a design from a link. You can paste a raw link, a github.com link or a whole turtle command, or pick from the list of designs in your repo.
+- **Turtle setup** shows what to put in the turtle for this design: coal, torches, trapdoors, water buckets and a stick, laid out in a 4×4 inventory with counts, plus where the chest goes.
 - **⟳ Update designer** downloads the newest version and restarts with your work still open.
 - **Open… / Save** reads and writes `.txt` design files in the `designs` folder.
 
