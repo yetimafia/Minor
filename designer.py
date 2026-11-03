@@ -36,6 +36,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 DESIGN_DIR = os.path.join(HERE, "designs")
 SETTINGS_FILE = os.path.join(HERE, "minor_settings.json")
 DEFAULT_SETTINGS = {"repo": "yetimafia/Minor", "branch": "main", "token": ""}
+UPDATE_REPO = "yetimafia/Minor"  # where the designer and minor.lua live
 
 
 def load_settings():
@@ -899,27 +900,41 @@ class App:
 
     # ---- self update --------------------------------------------------
     def update_designer(self):
-        st = self.settings
-        url = f"https://api.github.com/repos/{st['repo']}/contents/designer.py?ref={st['branch']}"
-        headers = {"Accept": "application/vnd.github.raw", "User-Agent": "minor-designer"}
-        if st.get("token"):
-            headers["Authorization"] = "Bearer " + st["token"]
+        # Always update from the official repo, with no token (it's public),
+        # so a wrong repo setting or an expired token can't break updating.
+        repo = UPDATE_REPO
+        sources = [
+            (f"https://api.github.com/repos/{repo}/contents/designer.py?ref=main",
+             {"Accept": "application/vnd.github.raw", "User-Agent": "minor-designer"}),
+            (f"https://raw.githubusercontent.com/{repo}/main/designer.py",
+             {"User-Agent": "minor-designer", "Cache-Control": "no-cache"}),
+        ]
         self.status.config(text="Checking for updates...", foreground="#777")
         self.root.update()
+        ctx = ssl.create_default_context()
         try:
-            ctx = ssl.create_default_context()
+            import certifi
+            ctx = ssl.create_default_context(cafile=certifi.where())
+        except ImportError:
+            pass
+        new_code, errors = None, []
+        for url, headers in sources:
             try:
-                import certifi
-                ctx = ssl.create_default_context(cafile=certifi.where())
-            except ImportError:
-                pass
-            req = urllib.request.Request(url, headers=headers)
-            with urllib.request.urlopen(req, timeout=30, context=ctx) as r:
-                new_code = r.read().decode("utf-8")
-            compile(new_code, "designer.py", "exec")  # make sure it's real Python
-        except Exception as ex:
-            self.status.config(text="", foreground="#777")
-            messagebox.showerror("Update", f"Couldn't download the update:\n{ex}")
+                req = urllib.request.Request(url, headers=headers)
+                with urllib.request.urlopen(req, timeout=30, context=ctx) as r:
+                    code = r.read().decode("utf-8")
+                compile(code, "designer.py", "exec")  # make sure it's real Python
+                new_code = code
+                break
+            except Exception as ex:
+                errors.append(f"{url.split('/')[2]}: {ex}")
+        if new_code is None:
+            self.status.config(text="Update failed.", foreground="#c33")
+            hint = ""
+            if any("CERTIFICATE" in e.upper() for e in errors):
+                hint = ("\n\nOn a Mac, run 'Install Certificates.command' from your Python folder "
+                        "(Applications > Python 3.x), then try again.")
+            messagebox.showerror("Update", "Couldn't download the update:\n\n" + "\n".join(errors) + hint)
             return
 
         me = os.path.abspath(__file__)
@@ -946,7 +961,20 @@ class App:
             f.write(self.d.to_text())
         meta = json.dumps({"name": self.name.get(), "layer": self.layer})
 
-        subprocess.Popen([sys.executable, me, "--resume", resume, meta], cwd=HERE)
+        try:
+            exe = sys.executable or "python"
+            flags = 0
+            if os.name == "nt":
+                # start the new window on its own so closing this one can't take it down
+                flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+                pyw = os.path.join(os.path.dirname(exe), "pythonw.exe")
+                if os.path.exists(pyw):
+                    exe = pyw
+            subprocess.Popen([exe, me, "--resume", resume, meta], cwd=HERE, creationflags=flags,
+                             close_fds=True)
+        except Exception as ex:
+            messagebox.showinfo("Update", f"Updated! Please close and reopen the designer yourself.\n\n({ex})")
+            return
         self.root.destroy()
 
     def resume_from(self, path, meta):
@@ -1028,7 +1056,8 @@ class App:
             for prefix in ("https://github.com/", "http://github.com/", "github.com/"):
                 if r.lower().startswith(prefix):
                     r = r[len(prefix):]
-            r = r.removesuffix(".git")
+            if r.endswith(".git"):
+                r = r[:-4]
             if "/" not in r:  # just the repo name -> assume the same owner
                 r = DEFAULT_SETTINGS["repo"].split("/")[0] + "/" + r
             # make sure the repo really exists before saving it
