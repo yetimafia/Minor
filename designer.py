@@ -236,6 +236,7 @@ class App:
             ttk.Label(top, text=label).pack(side="left")
             ttk.Spinbox(top, from_=1, to=MAX, textvariable=var, width=4).pack(side="left", padx=(2, 8))
         ttk.Button(top, text="Apply size", command=self.apply_size).pack(side="left")
+        ttk.Button(top, text="⟳ Update designer", command=self.update_designer).pack(side="right")
 
         body = ttk.Frame(self.root, padding=6)
         body.pack(fill="both", expand=True)
