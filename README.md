@@ -67,7 +67,11 @@ You only need Python 3. On Windows, get it from python.org; tkinter is included.
 
 ### Tabs (auto-saved)
 
-The designer has **5 tabs** across the top, and each one holds its own design. Everything is saved automatically a couple of seconds after each change, when you switch tabs, and when you close the designer. All 5 tabs come back next time you open it, and after **Update designer**. *New in this tab* starts a blank design in the current tab. The tabs are stored in `designs/_tabs/` on your PC; they don't get uploaded.
+Each tab across the top holds its own design.
+- **Click** a tab to open it, and **drag** it left or right to reorder.
+- **×** deletes a tab; it asks first if the tab has anything in it. **+** adds a new tab, up to 10.
+- Everything saves automatically a couple of seconds after each change, when you switch tabs, and when you close the designer. All tabs come back, in order, next time you open it and after **Update designer**.
+- Tabs are stored in `designs/_tabs/` on your PC and don't get uploaded.
 
 ### Opening designs from a link
 

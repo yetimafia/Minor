@@ -41,7 +41,94 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 DESIGN_DIR = os.path.join(HERE, "designs")
 SETTINGS_FILE = os.path.join(HERE, "minor_settings.json")
 TABS_DIR = os.path.join(DESIGN_DIR, "_tabs")   # the 5 auto-saved tabs live here
-TAB_COUNT = 5
+TAB_COUNT = 5      # tabs you start with
+MAX_TABS = 10
+
+# ---- look: light blue ------------------------------------------------
+THEME = {
+    "bg": "#eaf4f8",        # window
+    "panel": "#f6fbfd",     # buttons / fields
+    "line": "#c4dce6",      # borders
+    "text": "#1d3a47",
+    "muted": "#6e8c98",
+    "accent": "#3d9bd1",    # main blue
+    "accent_dark": "#2b80b2",
+    "accent_soft": "#d3eaf6",
+    "tab": "#d9eaf2",
+    "grid_bg": "#d6e6ee",   # behind the drawing grid
+}
+
+
+UI_FONT = "TkDefaultFont"  # real family name, filled in by apply_theme
+
+
+def apply_theme(root):
+    """A clean, flat light-blue look for all the ttk widgets."""
+    global UI_FONT
+    import tkinter.font as tkfont
+    t = THEME
+    family = "Segoe UI" if os.name == "nt" else ("Helvetica Neue" if sys.platform == "darwin" else None)
+    for fname in ("TkDefaultFont", "TkTextFont", "TkMenuFont", "TkHeadingFont"):
+        try:
+            f = tkfont.nametofont(fname)
+            if family:
+                f.configure(family=family)
+            f.configure(size=10)
+        except tk.TclError:
+            pass
+    try:
+        UI_FONT = tkfont.nametofont("TkDefaultFont").actual("family")
+    except tk.TclError:
+        pass
+    family = UI_FONT
+    root.configure(bg=t["bg"])
+    st = ttk.Style(root)
+    try:
+        st.theme_use("clam")
+    except tk.TclError:
+        pass
+    st.configure(".", background=t["bg"], foreground=t["text"], bordercolor=t["line"],
+                 lightcolor=t["panel"], darkcolor=t["line"], troughcolor=t["accent_soft"],
+                 focuscolor=t["accent"], selectbackground=t["accent"], selectforeground="white",
+                 fieldbackground="white", insertcolor=t["text"], arrowcolor=t["accent_dark"])
+    st.configure("TFrame", background=t["bg"])
+    st.configure("TLabel", background=t["bg"], foreground=t["text"])
+    st.configure("TLabelframe", background=t["bg"], bordercolor=t["line"], relief="solid", borderwidth=1)
+    st.configure("TLabelframe.Label", background=t["bg"], foreground=t["accent_dark"],
+                 font=(family, 10, "bold"))
+    st.configure("TButton", background="#ffffff", foreground=t["text"], bordercolor="#b6d3df",
+                 lightcolor="#ffffff", darkcolor="#e1eef4", padding=(10, 4), focusthickness=0)
+    st.map("TButton",
+           background=[("pressed", t["accent_soft"]), ("active", "#eef7fb")],
+           bordercolor=[("active", t["accent"]), ("focus", "#8ec3dd")],
+           lightcolor=[("active", "#f6fbfd")], darkcolor=[("active", "#d9ecf5")])
+    st.configure("Accent.TButton", background=t["accent"], foreground="white", bordercolor=t["accent"],
+                 lightcolor=t["accent"], darkcolor=t["accent"], font=(family, 10, "bold"))
+    st.map("Accent.TButton",
+           background=[("pressed", t["accent_dark"]), ("active", "#4eaadf")],
+           lightcolor=[("active", "#4eaadf")], darkcolor=[("active", "#4eaadf")],
+           bordercolor=[("active", t["accent_dark"])], foreground=[("disabled", "#e0eef5")])
+    for w in ("TCheckbutton", "TRadiobutton"):
+        st.configure(w, background=t["bg"], foreground=t["text"], indicatorbackground="white",
+                     indicatorforeground="white", upperbordercolor="#9cc4d6", lowerbordercolor="#9cc4d6",
+                     indicatormargin=(0, 0, 6, 0), focusthickness=0)
+        st.map(w, indicatorbackground=[("selected", t["accent"]), ("pressed", t["accent_soft"])],
+               indicatorforeground=[("selected", "white")],
+               upperbordercolor=[("selected", t["accent_dark"])], lowerbordercolor=[("selected", t["accent_dark"])],
+               background=[("active", t["bg"])])
+    st.configure("TEntry", fieldbackground="white", bordercolor=t["line"], lightcolor="white", padding=3)
+    st.map("TEntry", bordercolor=[("focus", t["accent"])])
+    st.configure("TSpinbox", fieldbackground="white", bordercolor=t["line"], lightcolor="white",
+                 arrowsize=11, padding=2)
+    st.map("TSpinbox", bordercolor=[("focus", t["accent"])])
+    st.configure("TCombobox", fieldbackground="white", bordercolor=t["line"], lightcolor="white", padding=2)
+    root.option_add("*Listbox.background", "white")
+    root.option_add("*Listbox.foreground", t["text"])
+    root.option_add("*Listbox.selectBackground", t["accent"])
+    root.option_add("*Listbox.highlightColor", t["accent"])
+    root.option_add("*Listbox.borderWidth", 0)
+    root.option_add("*Toplevel.background", t["bg"])
+    root.option_add("*TCombobox*Listbox.background", "white")
 DEFAULT_SETTINGS = {"repo": "yetimafia/Minor", "branch": "main", "token": ""}
 UPDATE_REPO = "yetimafia/Minor"  # where the designer and minor.lua live
 
@@ -374,6 +461,7 @@ class App:
     def __init__(self, root):
         self.root = root
         root.title("Minor Designer")
+        apply_theme(root)
         self.d = Design()
         self.layer = 0
         self.cell = 12
@@ -398,7 +486,6 @@ class App:
         # 5 tabs, each its own design, saved automatically
         self.slots = [None] * TAB_COUNT
         self.cur_slot = 0
-        self.slot_var = tk.IntVar(value=0)
         self.dirty = False
         self.load_tabs()
 
@@ -420,21 +507,22 @@ class App:
             ttk.Spinbox(top, from_=1, to=MAX, textvariable=var, width=4).pack(side="left", padx=(2, 8))
         ttk.Button(top, text="Apply size", command=self.apply_size).pack(side="left")
         ttk.Button(top, text="⟳ Update designer", command=self.update_designer).pack(side="right")
-        ttk.Button(top, text="3D view", command=self.view_3d).pack(side="right", padx=6)
+        ttk.Button(top, text="3D view", style="Accent.TButton", command=self.view_3d).pack(side="right", padx=6)
 
-        tabs = ttk.Frame(self.root, padding=(6, 0, 6, 0))
+        tabs = ttk.Frame(self.root, padding=(6, 2, 6, 0))
         tabs.pack(fill="x")
-        ttk.Label(tabs, text="Tabs:").pack(side="left", padx=(0, 4))
-        self.tab_buttons = []
-        for i in range(TAB_COUNT):
-            b = tk.Radiobutton(tabs, text=str(i + 1), variable=self.slot_var, value=i, indicatoron=False,
-                               command=self.switch_tab, width=15, padx=6, pady=3, selectcolor="#e6cf98",
-                               anchor="w")
-            b.pack(side="left", padx=2)
-            self.tab_buttons.append(b)
-        ttk.Button(tabs, text="New in this tab", command=self.new_in_tab).pack(side="left", padx=(8, 0))
-        self.autosave_label = ttk.Label(tabs, text="", foreground="#3a7")
-        self.autosave_label.pack(side="right")
+        self.autosave_label = ttk.Label(tabs, text="", foreground="#3a9a6e")
+        self.autosave_label.pack(side="right", padx=(6, 0))
+        self.tabbar = tk.Canvas(tabs, height=34, bg=THEME["bg"], highlightthickness=0)
+        self.tabbar.pack(side="left", fill="x", expand=True)
+        self.tabbar.bind("<Button-1>", self.tab_press)
+        self.tabbar.bind("<B1-Motion>", self.tab_drag)
+        self.tabbar.bind("<ButtonRelease-1>", self.tab_release)
+        self.tabbar.bind("<Motion>", self.tab_hover)
+        self.tabbar.bind("<Leave>", lambda e: self.set_tab_hover(None))
+        self.tabbar.bind("<Configure>", lambda e: self.draw_tabs())
+        self.tab_drag_state = None
+        self.tab_hover_at = None
 
         body = ttk.Frame(self.root, padding=6)
         body.pack(fill="both", expand=True)
@@ -458,9 +546,9 @@ class App:
         for value, text in (("off", "Off"), ("below", "Below"), ("above", "Above")):
             ttk.Radiobutton(gr, text=text, value=value, variable=self.ghost,
                             command=self.redraw).pack(side="left")
-        self.ghost_hint = ttk.Label(lay, text="", foreground="#777")
+        self.ghost_hint = ttk.Label(lay, text="", foreground=THEME["muted"])
         self.ghost_hint.pack(anchor="w")
-        ttk.Label(lay, text="(G key switches)", foreground="#999").pack(anchor="w")
+        ttk.Label(lay, text="(G key switches)", foreground=THEME["muted"]).pack(anchor="w")
         ttk.Checkbutton(lay, text="Show water flow", variable=self.show_flow,
                         command=self.redraw).pack(anchor="w", pady=(4, 0))
 
@@ -471,7 +559,7 @@ class App:
                             ("water", "Water bucket pen (placed last)"), ("rect", "Dig rectangle"),
                             ("rectkeep", "Keep rectangle"), ("start", "Set turtle start")):
             ttk.Radiobutton(tools, text=text, value=value, variable=self.tool).pack(anchor="w")
-        ttk.Label(tools, text="Right mouse = eraser", foreground="#777").pack(anchor="w", pady=(4, 0))
+        ttk.Label(tools, text="Right mouse = eraser", foreground=THEME["muted"]).pack(anchor="w", pady=(4, 0))
 
         lay_ops = ttk.LabelFrame(side_a, text="This layer", padding=6)
         lay_ops.pack(fill="x", pady=(0, 6))
@@ -483,7 +571,7 @@ class App:
         shapes = ttk.LabelFrame(side_b, text="Shapes", padding=6)
         shapes.pack(fill="x", pady=(0, 6))
         ttk.Button(shapes, text="★ Shape through layers...", command=self.layer_shape_dialog).pack(fill="x", pady=(0, 4))
-        ttk.Label(shapes, text="Whole design:", foreground="#777").pack(anchor="w")
+        ttk.Label(shapes, text="Whole design:", foreground=THEME["muted"]).pack(anchor="w")
         for text, fn in (("Box (fill all)", self.shape_box), ("Sphere", self.shape_sphere),
                          ("Dome", self.shape_dome), ("Cylinder", self.shape_cylinder),
                          ("Tunnel (arch)", self.shape_arch), ("Clear all", self.shape_clear)):
@@ -505,7 +593,7 @@ class App:
         ttk.Checkbutton(trp, text="Open them after placing", variable=self.open_traps,
                         command=self.set_open_traps).pack(anchor="w")
         ttk.Label(trp, text="Needs 1 stick in the turtle and\nthe datapack (see README)",
-                  foreground="#777", justify="left").pack(anchor="w")
+                  foreground=THEME["muted"], justify="left").pack(anchor="w")
 
         ttk.Button(side_b, text="Undo  (Ctrl+Z)", command=self.undo).pack(fill="x", pady=(0, 6))
 
@@ -520,14 +608,14 @@ class App:
                        command=lambda d=delta: self.move_start(*d)).grid(row=r, column=c)
         ttk.Button(pad, text="Up", width=6, command=lambda: self.move_start(0, 1, 0)).grid(row=0, column=3, padx=(8, 0))
         ttk.Button(pad, text="Down", width=6, command=lambda: self.move_start(0, -1, 0)).grid(row=2, column=3, padx=(8, 0))
-        self.start_label = ttk.Label(tp, text="", foreground="#777")
+        self.start_label = ttk.Label(tp, text="", foreground=THEME["muted"])
         self.start_label.pack(pady=(4, 0))
         ttk.Button(tp, text="Go to turtle's layer", command=self.goto_start_layer).pack(fill="x")
 
         right = ttk.Frame(body)
         right.pack(side="left", fill="both", expand=True)
-        ttk.Label(right, text="▲ turtle faces this way ▲", foreground="#777").pack()
-        self.canvas = tk.Canvas(right, bg="#202020", highlightthickness=0)
+        ttk.Label(right, text="▲ turtle faces this way ▲", foreground=THEME["muted"]).pack()
+        self.canvas = tk.Canvas(right, bg=THEME["grid_bg"], highlightthickness=0)
         self.canvas.pack(fill="both", expand=True)
         self.canvas.bind("<Button-1>", lambda e: self.on_press(e, False))
         self.canvas.bind("<B1-Motion>", lambda e: self.on_drag(e, False))
@@ -554,8 +642,8 @@ class App:
 
         gh = ttk.LabelFrame(self.root, text="Send to turtle", padding=6)
         gh.pack(fill="x", padx=6, pady=(0, 6))
-        ttk.Button(gh, text="1. Upload to GitHub", command=self.upload).pack(side="left")
-        ttk.Button(gh, text="2. Copy turtle command", command=self.copy_command).pack(side="left", padx=6)
+        ttk.Button(gh, text="1. Upload to GitHub", style="Accent.TButton", command=self.upload).pack(side="left")
+        ttk.Button(gh, text="2. Copy turtle command", style="Accent.TButton", command=self.copy_command).pack(side="left", padx=6)
         ttk.Entry(gh, textvariable=self.command, state="readonly").pack(side="left", fill="x", expand=True)
         ttk.Button(gh, text="GitHub settings", command=self.settings_dialog).pack(side="left", padx=(6, 0))
         ttk.Button(gh, text="⟳ Update designer", command=self.update_designer).pack(side="left", padx=(6, 0))
@@ -693,7 +781,7 @@ class App:
                 self.canvas.create_rectangle(px + 1, py + 1, px + c - 1, py + c - 1, fill=COLORS["chest"],
                                              outline="", tags="marker")
                 self.canvas.create_text(px + c / 2, py + c / 2, text="C", fill="white",
-                                        tags="marker", font=("TkDefaultFont", max(7, c // 2), "bold"))
+                                        tags="marker", font=(UI_FONT, max(7, c // 2), "bold"))
         self.layer_label.config(text=f"{y + 1} of {d.H}")
         if hasattr(self, "start_label"):
             self.start_label.config(text=f"forward {sx}, right {sz}, layer {sy + 1}")
@@ -713,7 +801,7 @@ class App:
         self.canvas.create_rectangle(px + 1, py + 1, px + c - 1, py + c - 1, fill=color,
                                      outline="", tags="marker")
         self.canvas.create_text(px + c / 2, py + c / 2, text=text, fill="white", tags="marker",
-                                font=("TkDefaultFont", max(7, c // 2), "bold"))
+                                font=(UI_FONT, max(7, c // 2), "bold"))
 
     def update_stats(self):
         dig, torches = self.d.count()
@@ -1016,7 +1104,7 @@ class App:
         ttk.Label(f, text=f"Or pick one from your repo ({st['repo']}):").pack(anchor="w")
         lb = tk.Listbox(f, height=10, activestyle="dotbox")
         lb.pack(fill="both", expand=True, pady=(4, 0))
-        note = ttk.Label(f, text="", foreground="#777")
+        note = ttk.Label(f, text="", foreground=THEME["muted"])
         note.pack(anchor="w", pady=(4, 0))
         found = {}
 
@@ -1056,7 +1144,7 @@ class App:
             name = name_hint or os.path.splitext(os.path.basename(link.split("?")[0]))[0] or "downloaded"
             self.name.set(name)
             self.rebuild_grid()
-            self.status.config(text=f"Opened '{name}' from the web into tab {self.cur_slot + 1}.",
+            self.status.config(text=f"Opened '{name}' from the web into this tab.",
                                foreground="#3a7")
             win.destroy()
 
@@ -1075,7 +1163,7 @@ class App:
         ttk.Button(btns, text="Open selected", command=load_pick).pack(side="left", padx=6)
         ttk.Button(btns, text="Close", command=win.destroy).pack(side="right")
         ttk.Label(f, text="It opens in the current tab (Undo brings back what was there).",
-                  foreground="#777").pack(anchor="w", pady=(6, 0))
+                  foreground=THEME["muted"]).pack(anchor="w", pady=(6, 0))
         win.after(100, refresh)
 
     # ---- shapes through layers -----------------------------------------
@@ -1114,8 +1202,8 @@ class App:
                      width=26).grid(row=row, column=1, columnspan=3, sticky="w")
         row += 1
         label("", row)
-        label("Length (fwd)", row, 1, foreground="#777")
-        label("Width (right)", row, 2, foreground="#777")
+        label("Length (fwd)", row, 1, foreground=THEME["muted"])
+        label("Width (right)", row, 2, foreground=THEME["muted"])
         row += 1
         label("Size on FIRST layer", row); spin(v["len0"], row, 1); spin(v["wid0"], row, 2)
         row += 1
@@ -1129,7 +1217,7 @@ class App:
         ttk.Button(f, text="All", command=lambda: (v["from"].set(1), v["to"].set(self.d.H))).grid(row=row, column=3)
         row += 1
         label("Wall thickness", row); spin(v["thick"], row, 1, 32)
-        label("(ring, walls, plus)", row, 2, foreground="#777")
+        label("(ring, walls, plus)", row, 2, foreground=THEME["muted"])
         row += 1
         label("Mode", row)
         mf = ttk.Frame(f)
@@ -1156,7 +1244,7 @@ class App:
         ttk.Button(pf, text="Upside down", command=lambda: preset("grow")).pack(side="left")
         row += 1
 
-        ttk.Label(f, foreground="#777", justify="left", text=(
+        ttk.Label(f, foreground=THEME["muted"], justify="left", text=(
             "Tip: Circle + Pyramid/cone = a cone. Rectangle + Pyramid = a pyramid.\n"
             "Ring with the same size top and bottom = a round tower.")).grid(
             row=row, column=0, columnspan=4, sticky="w", pady=(6, 0))
@@ -1239,26 +1327,33 @@ class App:
         return os.path.join(TABS_DIR, f"tab{i + 1}.txt")
 
     def load_tabs(self):
-        """Bring back all 5 tabs from last time."""
+        """Bring back the tabs from last time."""
         try:
             with open(os.path.join(TABS_DIR, "tabs.json")) as f:
                 meta = json.load(f)
         except (OSError, ValueError):
             meta = {}
         infos = meta.get("tabs", [])
-        for i in range(TAB_COUNT):
-            info = infos[i] if i < len(infos) and isinstance(infos[i], dict) else {}
-            d = None
+        cur = meta.get("current", 0)
+        self.slots = []
+        for i in range(max(len(infos), 0)):
+            info = infos[i] if isinstance(infos[i], dict) else {}
             try:
                 with open(self.tab_path(i)) as f:
                     d = Design.from_text(f.read())
             except (OSError, ValueError):
-                pass
-            self.slots[i] = {"d": d, "name": info.get("name", "myroom" if i == 0 else f"design{i + 1}"),
-                             "layer": int(info.get("layer", 0)), "history": []}
-        cur = meta.get("current", 0)
-        self.cur_slot = cur if isinstance(cur, int) and 0 <= cur < TAB_COUNT else 0
-        self.slot_var.set(self.cur_slot)
+                if i == cur:
+                    cur = len(self.slots)  # keep pointing at roughly the same tab
+                continue  # a tab that was never used: drop it
+            if i == cur:
+                cur = len(self.slots)
+            self.slots.append({"d": d, "name": info.get("name", f"design{i + 1}"),
+                               "layer": int(info.get("layer", 0)), "history": []})
+        if not self.slots:  # first run: start with a few empty tabs
+            self.slots = [{"d": Design(), "name": "myroom" if i == 0 else f"design{i + 1}",
+                           "layer": 0, "history": []} for i in range(TAB_COUNT)]
+            cur = 0
+        self.cur_slot = cur if isinstance(cur, int) and 0 <= cur < len(self.slots) else 0
         self.apply_tab(self.cur_slot, rebuild=False)
 
     def store_tab(self):
@@ -1281,7 +1376,8 @@ class App:
         """Write tab files (just the current one by default) plus the tab list."""
         try:
             os.makedirs(TABS_DIR, exist_ok=True)
-            for i in ([self.cur_slot] if which is None else which):
+            ids = [self.cur_slot] if which is None else (range(len(self.slots)) if which == "all" else which)
+            for i in ids:
                 s = self.slots[i]
                 if s and s["d"] is not None:
                     tmp = self.tab_path(i) + ".tmp"
@@ -1292,6 +1388,11 @@ class App:
                     "tabs": [{"name": s["name"], "layer": s["layer"]} for s in self.slots]}
             with open(os.path.join(TABS_DIR, "tabs.json"), "w") as f:
                 json.dump(meta, f, indent=1)
+            if which == "all":  # tabs were moved or deleted: remove files past the end
+                k = len(self.slots)
+                while os.path.exists(self.tab_path(k)):
+                    os.remove(self.tab_path(k))
+                    k += 1
             return True
         except OSError as ex:
             self.status.config(text=f"Couldn't auto-save: {ex}", foreground="#c33")
@@ -1302,13 +1403,12 @@ class App:
             self.dirty = False
             self.store_tab()
             if self.save_tabs():
-                self.autosave_label.config(text=f"Tab {self.cur_slot + 1} saved ✓")
+                self.autosave_label.config(text="Saved ✓")
                 self.root.after(1500, lambda: self.autosave_label.config(text=""))
         self.root.after(2000, self.autosave_tick)
 
-    def switch_tab(self):
-        i = self.slot_var.get()
-        if i == self.cur_slot:
+    def select_tab(self, i):
+        if i == self.cur_slot or not (0 <= i < len(self.slots)):
             return
         self.store_tab()
         self.save_tabs()          # save the tab we're leaving
@@ -1316,19 +1416,158 @@ class App:
         self.cur_slot = i
         self.apply_tab(i)
         self.save_tabs([])        # remember which tab is open
-        self.update_tab_labels()
+        self.draw_tabs()
 
-    def new_in_tab(self):
-        if not messagebox.askyesno("New design", f"Start a new blank design in tab {self.cur_slot + 1}?\n\n"
-                                                 "What's in this tab now will be replaced. (Undo can bring "
-                                                 "it back until you close the designer.)"):
+    def add_tab(self):
+        if len(self.slots) >= MAX_TABS:
+            self.status.config(text=f"That's the most tabs ({MAX_TABS}). Delete one to make room.",
+                               foreground="#c80")
             return
-        self.snapshot()
-        self.d = Design()
-        self.layer = 0
-        self.name.set(f"design{self.cur_slot + 1}")
-        self.vL.set(self.d.L); self.vW.set(self.d.W); self.vH.set(self.d.H)
-        self.rebuild_grid()
+        self.store_tab()
+        self.save_tabs()
+        n = len(self.slots) + 1
+        names = {s["name"] for s in self.slots}
+        while f"design{n}" in names:
+            n += 1
+        self.slots.append({"d": Design(), "name": f"design{n}", "layer": 0, "history": []})
+        self.cur_slot = len(self.slots) - 1
+        self.apply_tab(self.cur_slot)
+        self.save_tabs("all")
+        self.draw_tabs()
+
+    def delete_tab(self, i):
+        if len(self.slots) <= 1:
+            self.status.config(text="You need at least one tab.", foreground="#c80")
+            return
+        self.store_tab()
+        s = self.slots[i]
+        if s["d"].count()[0] > 0 and not messagebox.askyesno(
+                "Delete tab", f"Delete the tab '{s['name']}'?\n\nThis can't be undone. Save or upload it "
+                              "first if you want to keep a copy."):
+            return
+        self.slots.pop(i)
+        if i < self.cur_slot or self.cur_slot >= len(self.slots):
+            self.cur_slot = max(0, self.cur_slot - 1)
+        self.apply_tab(self.cur_slot)
+        self.dirty = False
+        self.save_tabs("all")
+        self.draw_tabs()
+
+    # tab strip drawing + mouse ------------------------------------------
+    def tab_geometry(self):
+        w = max(200, self.tabbar.winfo_width())
+        n = len(self.slots)
+        plus = 34
+        tw = max(70, min(160, (w - plus - 8) // max(1, n) - 4))
+        return tw, tw + 4  # tab width, pitch
+
+    @staticmethod
+    def round_rect(cv, x0, y0, x1, y1, r, **kw):
+        pts = [x0 + r, y0, x1 - r, y0, x1, y0, x1, y0 + r, x1, y1, x0, y1, x0, y0 + r, x0, y0]
+        return cv.create_polygon(pts, smooth=True, **kw)
+
+    def draw_tabs(self):
+        if not hasattr(self, "tabbar"):
+            return
+        cv, t = self.tabbar, THEME
+        cv.delete("all")
+        tw, pitch = self.tab_geometry()
+        drag = self.tab_drag_state
+        order = list(range(len(self.slots)))
+        # draw the dragged tab last so it floats on top
+        if drag and drag.get("moving"):
+            order.remove(drag["index"])
+            order.append(drag["index"])
+        for i in order:
+            s = self.slots[i]
+            x = 2 + i * pitch
+            if drag and drag.get("moving") and i == drag["index"]:
+                x = max(0, drag["x"] - drag["grab"])
+            active = i == self.cur_slot
+            hover = self.tab_hover_at == i
+            fill = t["accent"] if active else ("#c8e2ee" if hover else t["tab"])
+            fg = "white" if active else t["text"]
+            self.round_rect(cv, x, 4, x + tw, 34, 9, fill=fill, outline="")
+            name = self.name.get() if active else s["name"]
+            maxch = max(3, (tw - 34) // 7)
+            label = name if len(name) <= maxch else name[:maxch - 1] + "…"
+            cv.create_text(x + 11, 19, text=label, anchor="w", fill=fg,
+                           font=(UI_FONT, 10, "bold" if active else "normal"))
+            cx = x + tw - 13  # the little x
+            cv.create_text(cx, 19, text="×", fill=("#e6f4fb" if active else t["muted"]),
+                           font=(UI_FONT, 12))
+        # + button
+        px = 2 + len(self.slots) * pitch + 4
+        if len(self.slots) < MAX_TABS:
+            plus_fill = "#c8e2ee" if self.tab_hover_at == "plus" else t["tab"]
+            cv.create_oval(px, 7, px + 25, 32, fill=plus_fill, outline="")
+            cv.create_text(px + 12.5, 19, text="+", fill=t["accent_dark"], font=(UI_FONT, 13, "bold"))
+
+    def tab_hit(self, x, y):
+        """What's under the mouse: ('tab', i), ('close', i), ('plus', None) or (None, None)."""
+        tw, pitch = self.tab_geometry()
+        i = int((x - 2) // pitch)
+        if 0 <= i < len(self.slots) and (x - 2) - i * pitch <= tw and 4 <= y <= 34:
+            if (x - 2) - i * pitch >= tw - 24:
+                return "close", i
+            return "tab", i
+        px = 2 + len(self.slots) * pitch + 4
+        if px <= x <= px + 25 and len(self.slots) < MAX_TABS:
+            return "plus", None
+        return None, None
+
+    def set_tab_hover(self, what):
+        if what != self.tab_hover_at:
+            self.tab_hover_at = what
+            self.draw_tabs()
+
+    def tab_hover(self, e):
+        if self.tab_drag_state:
+            return
+        kind, i = self.tab_hit(e.x, e.y)
+        self.set_tab_hover("plus" if kind == "plus" else i)
+        self.tabbar.config(cursor="hand2" if kind else "")
+
+    def tab_press(self, e):
+        kind, i = self.tab_hit(e.x, e.y)
+        if kind == "plus":
+            self.add_tab()
+        elif kind == "close":
+            self.delete_tab(i)
+        elif kind == "tab":
+            self.select_tab(i)
+            tw, pitch = self.tab_geometry()
+            self.tab_drag_state = {"index": self.cur_slot, "start": e.x, "x": e.x,
+                                   "grab": e.x - (2 + self.cur_slot * pitch), "moving": False}
+
+    def tab_drag(self, e):
+        d = self.tab_drag_state
+        if not d:
+            return
+        d["x"] = e.x
+        if not d["moving"] and abs(e.x - d["start"]) > 6:
+            d["moving"] = True
+            self.tabbar.config(cursor="fleur")
+        if d["moving"]:
+            tw, pitch = self.tab_geometry()
+            target = int((e.x - d["grab"] + pitch / 2 - 2) // pitch)
+            target = max(0, min(len(self.slots) - 1, target))
+            if target != d["index"]:
+                self.store_tab()
+                s = self.slots.pop(d["index"])
+                self.slots.insert(target, s)
+                d["index"] = target
+                self.cur_slot = target
+            self.draw_tabs()
+
+    def tab_release(self, e):
+        d = self.tab_drag_state
+        self.tab_drag_state = None
+        self.tabbar.config(cursor="")
+        if d and d["moving"]:
+            self.store_tab()
+            self.save_tabs("all")  # remember the new order
+        self.draw_tabs()
 
     def on_name_change(self):
         self.dirty = True
@@ -1337,12 +1576,7 @@ class App:
         self.update_tab_labels()
 
     def update_tab_labels(self):
-        if not hasattr(self, "tab_buttons"):
-            return
-        for i, b in enumerate(self.tab_buttons):
-            s = self.slots[i]
-            name = self.name.get() if i == self.cur_slot else (s["name"] if s and s["d"] is not None else "empty")
-            b.config(text=f"{i + 1}: {name[:12]}")
+        self.draw_tabs()
 
     def on_close(self):
         self.store_tab()
@@ -1387,7 +1621,7 @@ class App:
         self.snapshot()
         d.start = (nx, ny, nz)
         self.layer = ny  # follow the turtle between layers
-        self.status.config(text="", foreground="#777")
+        self.status.config(text="", foreground=THEME["muted"])
         self.redraw()
 
     def goto_start_layer(self):
@@ -1405,7 +1639,7 @@ class App:
             (f"https://raw.githubusercontent.com/{repo}/main/designer.py",
              {"User-Agent": "minor-designer", "Cache-Control": "no-cache"}),
         ]
-        self.status.config(text="Checking for updates...", foreground="#777")
+        self.status.config(text="Checking for updates...", foreground=THEME["muted"])
         self.root.update()
         ctx = ssl.create_default_context()
         try:
@@ -1441,7 +1675,7 @@ class App:
             return
         if not messagebox.askyesno("Update", "A new version is ready. Restart the designer now?\n\n"
                                              "Your current design will be kept open."):
-            self.status.config(text="", foreground="#777")
+            self.status.config(text="", foreground=THEME["muted"])
             return
 
         # keep a backup, then swap in the new file
@@ -1596,7 +1830,7 @@ class App:
                 return
         st = self.settings
         api = f"https://api.github.com/repos/{st['repo']}/contents/designs/{name}.txt"
-        self.status.config(text="Uploading...", foreground="#777")
+        self.status.config(text="Uploading...", foreground=THEME["muted"])
         self.root.update()
         try:
             code, info = github("GET", api + f"?ref={st['branch']}", st["token"])
@@ -1609,7 +1843,7 @@ class App:
                 body["sha"] = info["sha"]
             code, info = github("PUT", api, st["token"], body)
         except Exception as ex:  # network problems
-            self.status.config(text="", foreground="#777")
+            self.status.config(text="", foreground=THEME["muted"])
             messagebox.showerror("Upload", f"Couldn't reach GitHub:\n{ex}")
             return
         if code not in (200, 201):
