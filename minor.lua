@@ -219,7 +219,8 @@ end
 
 local function opened(i)
   if st[i] == 1 then todo = todo - 1
-  elseif st[i] == 0 then tunnels = tunnels + 1 end
+  elseif st[i] == 0 then tunnels = tunnels + 1
+  elseif st[i] == 3 then torchAt[i] = true end -- walked through a torch: put it back later
   st[i] = 2
 end
 
@@ -284,6 +285,7 @@ end
 
 -- breadth-first search from the turtle. Returns a list of cells to walk.
 -- allow: nil = open cells only, "torch" = may walk through placed torches,
+-- "marked" = may dig through blocks the design says to dig (not torch spots),
 -- true = may also tunnel through blocks the design says to keep.
 local NB = { { 1, 0, 0 }, { -1, 0, 0 }, { 0, 0, 1 }, { 0, 0, -1 }, { 0, 1, 0 }, { 0, -1, 0 } }
 local function findPath(isGoal, allow)
@@ -307,7 +309,11 @@ local function findPath(isGoal, allow)
       if inb(nx, ny, nz) then
         local ni = id(nx, ny, nz)
         local s = st[ni]
-        if not prev[ni] and (s == 2 or (allow and s == 3) or (allow == true and (s == 0 or s == 1))) then
+        local ok = s == 2
+          or (allow == "torch" and s == 3)
+          or (allow == "marked" and s == 1 and not torchAt[ni])
+          or (allow == true and (s == 0 or s == 1))
+        if not prev[ni] and ok then
           prev[ni] = ci
           queue[#queue + 1] = ni
         end
@@ -426,13 +432,91 @@ refuelFromInventory()
 local torchCount = 0
 for _ in pairs(torchAt) do torchCount = torchCount + 1 end
 print(("Size %d x %d x %d, %d blocks to dig"):format(L, W, H, todo))
-if torchCount > 0 then print(torchCount .. " torches will be placed at the end") end
+if torchCount > 0 then print(torchCount .. " torches - I'll light the room first") end
 if fuel() ~= math.huge then
   print(("Fuel: %d   Rough need: %d"):format(fuel(), math.floor(todo / 2.5) + L + W + H))
 end
 print("Chest goes BEHIND me.")
 waitForUser("Ready?")
+if torchCount > 0 and not torchSlot() then
+  waitForUser("I have no torches! Put some in me, or I'll skip them.")
+  if not torchSlot() then
+    print("No torches - skipping them.")
+    torchAt = {}
+    torchCount = 0
+    sleep(1)
+  end
+end
 term.clear()
+
+---------------------------------------------------------------- light first
+-- Dig a path to each torch spot and place the torch before digging the rest,
+-- so the room is lit while the turtle works.
+local function solidBelow(cx, cy, cz)
+  local s = get(cx, cy - 1, cz)
+  return s == 0 or s == -1 or s == 4
+end
+
+local function canLight(i)
+  return torchAt[i] and (st[i] == 1 or st[i] == 2)
+end
+
+-- standing at (cx,cy,cz), which way can I place a torch? (side first, then down)
+local function lightSpot(cx, cy, cz)
+  for d = 0, 3 do
+    local tx, tz = cx + DX[d], cz + DZ[d]
+    if inb(tx, cy, tz) and canLight(id(tx, cy, tz)) and solidBelow(tx, cy, tz)
+       and not (tx == sx and cy == sy and tz == sz) then
+      return d
+    end
+  end
+  if inb(cx, cy - 1, cz) and canLight(id(cx, cy - 1, cz)) and solidBelow(cx, cy - 1, cz) then
+    return "down"
+  end
+end
+
+local function placeTorchFrom(how)
+  if not torchSlot() then tripHome(true) end
+  local ti, ok
+  turtle.select(torchSlot() or 1)
+  if how == "down" then
+    ti = id(x, y - 1, z)
+    if st[ti] == 1 then
+      while turtle.detectDown() do if not turtle.digDown() then break end end
+      opened(ti)
+    end
+    ok = turtle.placeDown()
+  else
+    face(how)
+    ti = id(x + DX[how], y, z + DZ[how])
+    if st[ti] == 1 then
+      local n = 0
+      while turtle.detect() and n < 64 do
+        if not turtle.dig() then break end
+        n = n + 1
+      end
+      opened(ti)
+    end
+    ok = turtle.place()
+  end
+  turtle.select(1)
+  torchAt[ti] = nil
+  if ok then st[ti] = 3 end
+  return ok
+end
+
+local lit = 0
+while torchCount > 0 do
+  checkup()
+  local path = findPath(function(a, b, c) return lightSpot(a, b, c) ~= nil end, "marked")
+  if not path then break end
+  walk(path)
+  local how = lightSpot(x, y, z)
+  if how == nil then break end
+  if placeTorchFrom(how) then lit = lit + 1 end
+  term.setCursorPos(1, 1); term.clearLine()
+  write(("Lighting: %d of %d torches"):format(lit, torchCount))
+end
 
 ---------------------------------------------------------------- dig
 local function hasTodoNeighbour(cx, cy, cz)
@@ -461,7 +545,7 @@ while todo > 0 do
       end
     end
     if not moved and todo > 0 then
-      local path = findPath(hasTodoNeighbour)
+      local path = findPath(hasTodoNeighbour) or findPath(hasTodoNeighbour, "torch")
       if path then
         walk(path)
       else
@@ -476,6 +560,7 @@ end
 
 ---------------------------------------------------------------- torches
 local function torchSpot(cx, cy, cz)
+  -- any torches still missing (no floor yet, or knocked off) get placed now
   -- standing here, can I place a torch? returns how
   if get(cx, cy - 1, cz) == 2 and torchAt[id(cx, cy - 1, cz)] then return "down" end
   for d = 0, 3 do

@@ -33,7 +33,7 @@ The turtle downloads the newest version of the design from this repo each time. 
 
 - Put a **chest directly behind** the turtle. When the turtle fills up, it comes back and empties into it.
 - Put **fuel** (coal, charcoal, lava buckets…) in the turtle. If it runs low it burns coal it has dug up. If that's not enough, it comes home and asks for more.
-- Put **torches** in the turtle. It places them after digging and keeps them when it empties into the chest. Add `notorch` to skip torches: `minor box 20 20 5 notorch`.
+- Put **torches** in the turtle. It **lights the room first**: it digs a path to each torch spot and places the torch, then digs out everything else, so mobs can't spawn while it works. It keeps torches when it empties into the chest, and comes home to ask for more if it runs out. Add `notorch` to skip torches: `minor box 20 20 5 notorch`.
 
 ## The designer (on your PC)
 
