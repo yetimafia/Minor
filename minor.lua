@@ -840,7 +840,7 @@ if openCount > 0 and trapsPlaced > 0 then
       print("Couldn't open trapdoors: CC: Tweaked is")
       print("older than 1.104, which can't do it.")
     else
-      print("Couldn't open trapdoors (" .. tostring(openErr) .. ").")
+      print("Couldn't open trapdoors" .. (openErr and (" (" .. openErr .. ").") or "."))
       print("Add the minor datapack, run /reload,")
       print("then 'minor test' to check.")
     end
