@@ -2,6 +2,7 @@
 --
 --   minor box <length> <width> <height>   dig a plain room (max 64 each)
 --   minor <design>                        dig a design made with designer.py
+--   minor <url>                           dig a design straight from a link
 --   minor update                          download the newest minor
 --   add "notorch" to skip placing torches
 --
@@ -33,9 +34,10 @@ local function waitForUser(msg)
   os.pullEvent("key")
 end
 
-local function download(path, dest)
+local function download(path, dest, isUrl)
   if not http then return false, "HTTP is turned off in the server config" end
-  local h, err = http.get(BASE .. path .. "?t=" .. os.epoch("utc"))
+  local url = isUrl and path or (BASE .. path .. "?t=" .. os.epoch("utc"))
+  local h, err = http.get(url)
   if not h then return false, err or "not found" end
   local data = h.readAll()
   h.close()
@@ -161,14 +163,25 @@ if mode == "box" then
           valid(tonumber(args[3])) and tonumber(args[3]) or askNumber("Width (right)"),
           valid(tonumber(args[4])) and tonumber(args[4]) or askNumber("Height (up)"))
 else
-  local name = mode:gsub("%.txt$", "")
-  local localPath = "designs/" .. name .. ".txt"
-  write("Getting design '" .. name .. "'... ")
-  local ok, err = download("designs/" .. name .. ".txt", localPath)
-  if ok then print("downloaded.")
-  elseif fs.exists(localPath) then print("using saved copy.")
-  elseif fs.exists(name) then localPath = name; print("using local file.")
-  else error("Couldn't find design '" .. name .. "': " .. tostring(err)) end
+  local ok, err, localPath
+  if mode:find("^https?://") then
+    local name = mode:match("([^/]+)%.txt$") or "download"
+    localPath = "designs/" .. name .. ".txt"
+    write("Downloading design '" .. name .. "'... ")
+    ok, err = download(mode, localPath, true)
+    if ok then print("done.")
+    elseif fs.exists(localPath) then print("failed, using saved copy.")
+    else error("Couldn't download the design: " .. tostring(err)) end
+  else
+    local name = mode:gsub("%.txt$", "")
+    localPath = "designs/" .. name .. ".txt"
+    write("Getting design '" .. name .. "'... ")
+    ok, err = download("designs/" .. name .. ".txt", localPath)
+    if ok then print("downloaded.")
+    elseif fs.exists(localPath) then print("using saved copy.")
+    elseif fs.exists(name) then localPath = name; print("using local file.")
+    else error("Couldn't find design '" .. name .. "': " .. tostring(err)) end
+  end
   loadDesign(localPath)
 end
 

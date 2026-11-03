@@ -37,23 +37,32 @@ The turtle downloads the newest version of the design from this repo each time. 
 
 ## The designer (on your PC)
 
+Download `designer.py`, or clone the repo, and run:
+
 ```
-git clone https://github.com/yetimafia/minor
-cd minor
 python designer.py
 ```
 
 You only need Python 3. On Windows, get it from python.org; tkinter is included.
 
+### Drawing
+
 - You see one layer at a time from above. ▲/▼ (or Page Up/Down) changes layers.
 - **Light** squares get dug, **dark** squares are left alone, and **orange** squares get dug and get a torch.
-- Tools: dig pen, eraser (right-click always erases), torch pen, rectangles, and *Set turtle start*.
+- Tools: dig pen, eraser (right-click always erases), torch pen, rectangles, and *Set turtle start*. The green **S** is the start and the brown **C** is the chest.
 - Shape buttons: box, sphere, dome, cylinder, and arch tunnel. *Copy to ALL layers above* turns a floor plan into a 3D room.
-- *Auto place torches* puts torches on the floor every N blocks. The room needs to be at least 2 tall there.
-- The bottom bar shows block count, fuel needed, and a warning if part of the design isn't connected to the start. If a part isn't connected, the turtle digs a small tunnel to reach it.
-- **Save + Upload to GitHub** saves `designs/<name>.txt` and pushes it. Then on the turtle, type `minor <name>`.
+- *Auto place torches* puts torches on the floor every N blocks.
+- The bottom bar shows block count, fuel needed, and warnings.
 
-Upload needs Git installed and signed in to GitHub (git-scm.com). If you don't use Git, upload the `.txt` file into the `designs` folder on github.com instead.
+### Sending it to the turtle
+
+1. Click **1. Upload to GitHub**. The first time, it asks for a GitHub token:
+   - Go to **github.com/settings/personal-access-tokens/new**.
+   - *Repository access*: Only select repositories → `minor`.
+   - *Permissions → Repository permissions → Contents*: **Read and write**.
+   - Generate the token and paste it in. It's saved in `minor_settings.json` on your PC only and is never uploaded.
+2. Click **2. Copy turtle command**.
+3. Click the turtle's screen, press **Ctrl+V**, then **Enter**. It installs or updates `minor` and digs your design. It works on a brand-new turtle too.
 
 ## Design file format
 

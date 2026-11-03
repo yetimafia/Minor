@@ -19,7 +19,11 @@ runs git add / commit / push, so on the turtle you can then just type:
 """
 
 import os
-import subprocess
+import base64
+import json
+import ssl
+import urllib.error
+import urllib.request
 import tkinter as tk
 from collections import deque
 from tkinter import filedialog, messagebox, ttk
@@ -28,6 +32,47 @@ MAX = 64
 KEEP, DIG, TORCH = 0, 1, 2
 HERE = os.path.dirname(os.path.abspath(__file__))
 DESIGN_DIR = os.path.join(HERE, "designs")
+SETTINGS_FILE = os.path.join(HERE, "minor_settings.json")
+DEFAULT_SETTINGS = {"repo": "yetimafia/minor", "branch": "main", "token": ""}
+
+
+def load_settings():
+    s = dict(DEFAULT_SETTINGS)
+    try:
+        with open(SETTINGS_FILE) as f:
+            s.update(json.load(f))
+    except (OSError, ValueError):
+        pass
+    return s
+
+
+def save_settings(s):
+    with open(SETTINGS_FILE, "w") as f:
+        json.dump(s, f, indent=2)
+
+
+def github(method, url, token, body=None):
+    """Tiny GitHub API helper. Returns (status, json)."""
+    data = json.dumps(body).encode() if body is not None else None
+    req = urllib.request.Request(url, data=data, method=method, headers={
+        "Authorization": "Bearer " + token,
+        "Accept": "application/vnd.github+json",
+        "User-Agent": "minor-designer",
+    })
+    try:
+        ctx = ssl.create_default_context()
+        try:
+            import certifi  # helps on some Macs
+            ctx = ssl.create_default_context(cafile=certifi.where())
+        except ImportError:
+            pass
+        with urllib.request.urlopen(req, timeout=30, context=ctx) as r:
+            return r.status, json.loads(r.read() or b"{}")
+    except urllib.error.HTTPError as e:
+        try:
+            return e.code, json.loads(e.read() or b"{}")
+        except ValueError:
+            return e.code, {}
 
 COLORS = {
     KEEP: "#3b3b3b",
@@ -154,6 +199,9 @@ class App:
         self.tool = tk.StringVar(value="dig")
         self.spacing = tk.IntVar(value=8)
         self.ghost = tk.BooleanVar(value=True)
+        self.settings = load_settings()
+        self.uploaded = {}  # design name -> commit sha of last upload
+        self.command = tk.StringVar(value="")
 
         self.build_ui()
         self.rebuild_grid()
@@ -241,9 +289,19 @@ class App:
         bottom.pack(fill="x")
         self.stats = ttk.Label(bottom, text="")
         self.stats.pack(side="left")
-        ttk.Button(bottom, text="Save + Upload to GitHub", command=self.save_upload).pack(side="right")
         ttk.Button(bottom, text="Save", command=self.save).pack(side="right", padx=4)
         ttk.Button(bottom, text="Open...", command=self.open).pack(side="right")
+
+        gh = ttk.LabelFrame(self.root, text="Send to turtle", padding=6)
+        gh.pack(fill="x", padx=6, pady=(0, 6))
+        ttk.Button(gh, text="1. Upload to GitHub", command=self.upload).pack(side="left")
+        ttk.Button(gh, text="2. Copy turtle command", command=self.copy_command).pack(side="left", padx=6)
+        ttk.Entry(gh, textvariable=self.command, state="readonly").pack(side="left", fill="x", expand=True)
+        ttk.Button(gh, text="GitHub settings", command=self.settings_dialog).pack(side="left", padx=(6, 0))
+        self.status = ttk.Label(self.root, text="", foreground="#3a7", padding=(8, 0, 8, 6))
+        self.status.pack(fill="x")
+        self.name.trace_add("write", lambda *a: self.refresh_command())
+        self.refresh_command()
 
     # ---- grid drawing -------------------------------------------------
     def rebuild_grid(self):
@@ -522,8 +580,7 @@ class App:
         with open(path, "w", newline="\n") as f:
             f.write(self.d.to_text())
         if not quiet:
-            messagebox.showinfo("Saved", f"Saved to {path}\n\nOn the turtle: minor {name}\n"
-                                         "(upload it to GitHub first, or copy the file over)")
+            self.status.config(text=f"Saved {path}. Upload it to send it to the turtle.", foreground="#3a7")
         return path
 
     def open(self):
@@ -544,34 +601,112 @@ class App:
         self.layer = 0
         self.rebuild_grid()
 
-    def save_upload(self):
+    # ---- GitHub -------------------------------------------------------
+    def raw_url(self, path, ref=None):
+        st = self.settings
+        return f"https://raw.githubusercontent.com/{st['repo']}/{ref or st['branch']}/{path}"
+
+    def refresh_command(self):
+        name = "".join(ch for ch in self.name.get().strip() if ch.isalnum() or ch in "-_")
+        if not name:
+            self.command.set("")
+            return
+        # point at the exact upload, so the turtle never gets an old cached copy
+        design = self.raw_url(f"designs/{name}.txt", self.uploaded.get(name))
+        self.command.set(f"wget run {self.raw_url('install.lua')} {design}")
+
+    def copy_command(self):
+        name = self.clean_name()
+        if not name:
+            return
+        self.refresh_command()
+        self.root.clipboard_clear()
+        self.root.clipboard_append(self.command.get())
+        self.root.update()
+        if name in self.uploaded:
+            self.status.config(text="Copied! Click the turtle's screen and press Ctrl+V, then Enter.",
+                               foreground="#3a7")
+        else:
+            self.status.config(text="Copied - but this design hasn't been uploaded yet this session. "
+                                    "Upload it first if you changed it.", foreground="#c80")
+
+    def settings_dialog(self, first_time=False):
+        win = tk.Toplevel(self.root)
+        win.title("GitHub settings")
+        win.transient(self.root)
+        win.grab_set()
+        frm = ttk.Frame(win, padding=12)
+        frm.pack(fill="both")
+        repo = tk.StringVar(value=self.settings["repo"])
+        branch = tk.StringVar(value=self.settings["branch"])
+        token = tk.StringVar(value=self.settings["token"])
+        if first_time:
+            ttk.Label(frm, justify="left", text=(
+                "To upload, the designer needs a GitHub token (one time only).\n\n"
+                "1. Go to github.com/settings/personal-access-tokens/new\n"
+                "2. Repository access: Only select repositories -> your minor repo\n"
+                "3. Permissions -> Repository permissions -> Contents: Read and write\n"
+                "4. Generate token, copy it, paste it below.\n\n"
+                "It's saved in minor_settings.json on this PC only - never upload that file.")
+            ).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 10))
+        for r, (label, var, show) in enumerate((("Repo (user/name)", repo, ""), ("Branch", branch, ""),
+                                                 ("Token", token, "•")), start=1):
+            ttk.Label(frm, text=label).grid(row=r, column=0, sticky="w", pady=2)
+            ttk.Entry(frm, textvariable=var, width=46, show=show).grid(row=r, column=1, pady=2)
+        result = {"ok": False}
+
+        def ok():
+            self.settings.update(repo=repo.get().strip().strip("/"), branch=branch.get().strip() or "main",
+                                 token=token.get().strip())
+            save_settings(self.settings)
+            self.refresh_command()
+            result["ok"] = True
+            win.destroy()
+
+        ttk.Button(frm, text="Save", command=ok).grid(row=4, column=1, sticky="e", pady=(10, 0))
+        self.root.wait_window(win)
+        return result["ok"]
+
+    def upload(self):
         path = self.save(quiet=True)
         if not path:
             return
         name = self.name.get()
-
-        def git(*args):
-            return subprocess.run(["git", *args], cwd=HERE, capture_output=True, text=True)
-
-        try:
-            if git("rev-parse", "--is-inside-work-tree").returncode != 0:
-                messagebox.showerror("Upload", "This folder isn't a git repository.\n\n"
-                                               "Download it with:  git clone <your repo url>\n"
-                                               "and run designer.py from inside it.")
+        if not self.settings.get("token"):
+            if not self.settings_dialog(first_time=True) or not self.settings.get("token"):
                 return
-        except FileNotFoundError:
-            messagebox.showerror("Upload", "Git isn't installed. Get it from git-scm.com")
+        st = self.settings
+        api = f"https://api.github.com/repos/{st['repo']}/contents/designs/{name}.txt"
+        self.status.config(text="Uploading...", foreground="#777")
+        self.root.update()
+        try:
+            code, info = github("GET", api + f"?ref={st['branch']}", st["token"])
+            body = {
+                "message": f"Update design {name}",
+                "content": base64.b64encode(self.d.to_text().encode()).decode(),
+                "branch": st["branch"],
+            }
+            if code == 200 and isinstance(info, dict) and info.get("sha"):
+                body["sha"] = info["sha"]
+            code, info = github("PUT", api, st["token"], body)
+        except Exception as ex:  # network problems
+            self.status.config(text="", foreground="#777")
+            messagebox.showerror("Upload", f"Couldn't reach GitHub:\n{ex}")
             return
-
-        git("add", path)
-        commit = git("commit", "-m", f"Update design {name}")
-        git("pull", "--rebase")
-        push = git("push")
-        if push.returncode != 0:
-            messagebox.showerror("Upload", "Push failed:\n\n" + (push.stderr or commit.stdout)[-800:])
+        if code not in (200, 201):
+            msg = info.get("message", "") if isinstance(info, dict) else ""
+            hint = ""
+            if code in (401, 403):
+                hint = "\n\nThe token is wrong, expired, or doesn't have Contents: Read and write."
+            elif code == 404:
+                hint = "\n\nCheck the repo name in GitHub settings, and that the token can see that repo."
+            self.status.config(text="Upload failed.", foreground="#c33")
+            messagebox.showerror("Upload", f"GitHub said: {code} {msg}{hint}")
             return
-        messagebox.showinfo("Uploaded", f"Uploaded!\n\nOn the turtle type:\n    minor {name}\n\n"
-                                        "(GitHub can take a minute to show the new version.)")
+        self.uploaded[name] = info.get("commit", {}).get("sha") or st["branch"]
+        self.refresh_command()
+        self.status.config(text=f"Uploaded '{name}'! Now click '2. Copy turtle command' and paste it "
+                                "into the turtle.", foreground="#3a7")
 
 
 def main():
