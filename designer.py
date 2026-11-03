@@ -39,6 +39,8 @@ KEEP, DIG, TORCH, WATER, TRAP = 0, 1, 2, 3, 4  # WATER/TRAP: dug, then placed at
 HERE = os.path.dirname(os.path.abspath(__file__))
 DESIGN_DIR = os.path.join(HERE, "designs")
 SETTINGS_FILE = os.path.join(HERE, "minor_settings.json")
+TABS_DIR = os.path.join(DESIGN_DIR, "_tabs")   # the 5 auto-saved tabs live here
+TAB_COUNT = 5
 DEFAULT_SETTINGS = {"repo": "yetimafia/Minor", "branch": "main", "token": ""}
 UPDATE_REPO = "yetimafia/Minor"  # where the designer and minor.lua live
 
@@ -363,8 +365,19 @@ class App:
         self.uploaded = {}  # design name -> commit sha of last upload
         self.command = tk.StringVar(value="")
 
+        # 5 tabs, each its own design, saved automatically
+        self.slots = [None] * TAB_COUNT
+        self.cur_slot = 0
+        self.slot_var = tk.IntVar(value=0)
+        self.dirty = False
+        self.load_tabs()
+
         self.build_ui()
         self.rebuild_grid()
+        self.update_tab_labels()
+        self.name.trace_add("write", lambda *a: self.on_name_change())
+        root.protocol("WM_DELETE_WINDOW", self.on_close)
+        root.after(2000, self.autosave_tick)
 
     # ---- layout --------------------------------------------------------
     def build_ui(self):
@@ -378,6 +391,20 @@ class App:
         ttk.Button(top, text="Apply size", command=self.apply_size).pack(side="left")
         ttk.Button(top, text="⟳ Update designer", command=self.update_designer).pack(side="right")
         ttk.Button(top, text="3D view", command=self.view_3d).pack(side="right", padx=6)
+
+        tabs = ttk.Frame(self.root, padding=(6, 0, 6, 0))
+        tabs.pack(fill="x")
+        ttk.Label(tabs, text="Tabs:").pack(side="left", padx=(0, 4))
+        self.tab_buttons = []
+        for i in range(TAB_COUNT):
+            b = tk.Radiobutton(tabs, text=str(i + 1), variable=self.slot_var, value=i, indicatoron=False,
+                               command=self.switch_tab, width=15, padx=6, pady=3, selectcolor="#e6cf98",
+                               anchor="w")
+            b.pack(side="left", padx=2)
+            self.tab_buttons.append(b)
+        ttk.Button(tabs, text="New in this tab", command=self.new_in_tab).pack(side="left", padx=(8, 0))
+        self.autosave_label = ttk.Label(tabs, text="", foreground="#3a7")
+        self.autosave_label.pack(side="right")
 
         body = ttk.Frame(self.root, padding=6)
         body.pack(fill="both", expand=True)
@@ -694,6 +721,7 @@ class App:
     def paint(self, x, z, value):
         if self.d.grid[self.layer][x][z] == value:
             return
+        self.dirty = True
         self.d.grid[self.layer][x][z] = value
         self.draw_cell(x, z)
 
@@ -760,6 +788,7 @@ class App:
 
     # ---- undo ---------------------------------------------------------
     def snapshot(self):
+        self.dirty = True
         d = self.d
         self.history.append((d.L, d.W, d.H, [[row[:] for row in layer] for layer in d.grid], d.start))
         self.history = self.history[-40:]
@@ -767,6 +796,7 @@ class App:
     def undo(self):
         if not self.history:
             return
+        self.dirty = True
         L, W, H, grid, start = self.history.pop()
         size_changed = (L, W, H) != (self.d.L, self.d.W, self.d.H)
         self.d.L, self.d.W, self.d.H, self.d.grid, self.d.start = L, W, H, grid, start
@@ -1084,6 +1114,122 @@ class App:
 
     def set_open_traps(self):
         self.d.open_traps = bool(self.open_traps.get())
+        self.dirty = True
+
+    # ---- tabs (auto-saved) --------------------------------------------
+    def tab_path(self, i):
+        return os.path.join(TABS_DIR, f"tab{i + 1}.txt")
+
+    def load_tabs(self):
+        """Bring back all 5 tabs from last time."""
+        try:
+            with open(os.path.join(TABS_DIR, "tabs.json")) as f:
+                meta = json.load(f)
+        except (OSError, ValueError):
+            meta = {}
+        infos = meta.get("tabs", [])
+        for i in range(TAB_COUNT):
+            info = infos[i] if i < len(infos) and isinstance(infos[i], dict) else {}
+            d = None
+            try:
+                with open(self.tab_path(i)) as f:
+                    d = Design.from_text(f.read())
+            except (OSError, ValueError):
+                pass
+            self.slots[i] = {"d": d, "name": info.get("name", "myroom" if i == 0 else f"design{i + 1}"),
+                             "layer": int(info.get("layer", 0)), "history": []}
+        cur = meta.get("current", 0)
+        self.cur_slot = cur if isinstance(cur, int) and 0 <= cur < TAB_COUNT else 0
+        self.slot_var.set(self.cur_slot)
+        self.apply_tab(self.cur_slot, rebuild=False)
+
+    def store_tab(self):
+        self.slots[self.cur_slot] = {"d": self.d, "name": self.name.get(), "layer": self.layer,
+                                     "history": self.history}
+
+    def apply_tab(self, i, rebuild=True):
+        s = self.slots[i]
+        if s["d"] is None:
+            s["d"] = Design()
+        self.d = s["d"]
+        self.history = s["history"]
+        self.layer = max(0, min(self.d.H - 1, s["layer"]))
+        self.name.set(s["name"])
+        self.vL.set(self.d.L); self.vW.set(self.d.W); self.vH.set(self.d.H)
+        if rebuild:
+            self.rebuild_grid()
+
+    def save_tabs(self, which=None):
+        """Write tab files (just the current one by default) plus the tab list."""
+        try:
+            os.makedirs(TABS_DIR, exist_ok=True)
+            for i in ([self.cur_slot] if which is None else which):
+                s = self.slots[i]
+                if s and s["d"] is not None:
+                    tmp = self.tab_path(i) + ".tmp"
+                    with open(tmp, "w", newline="\n") as f:
+                        f.write(s["d"].to_text())
+                    os.replace(tmp, self.tab_path(i))  # never leaves a half-written file
+            meta = {"current": self.cur_slot,
+                    "tabs": [{"name": s["name"], "layer": s["layer"]} for s in self.slots]}
+            with open(os.path.join(TABS_DIR, "tabs.json"), "w") as f:
+                json.dump(meta, f, indent=1)
+            return True
+        except OSError as ex:
+            self.status.config(text=f"Couldn't auto-save: {ex}", foreground="#c33")
+            return False
+
+    def autosave_tick(self):
+        if self.dirty:
+            self.dirty = False
+            self.store_tab()
+            if self.save_tabs():
+                self.autosave_label.config(text=f"Tab {self.cur_slot + 1} saved ✓")
+                self.root.after(1500, lambda: self.autosave_label.config(text=""))
+        self.root.after(2000, self.autosave_tick)
+
+    def switch_tab(self):
+        i = self.slot_var.get()
+        if i == self.cur_slot:
+            return
+        self.store_tab()
+        self.save_tabs()          # save the tab we're leaving
+        self.dirty = False
+        self.cur_slot = i
+        self.apply_tab(i)
+        self.save_tabs([])        # remember which tab is open
+        self.update_tab_labels()
+
+    def new_in_tab(self):
+        if not messagebox.askyesno("New design", f"Start a new blank design in tab {self.cur_slot + 1}?\n\n"
+                                                 "What's in this tab now will be replaced. (Undo can bring "
+                                                 "it back until you close the designer.)"):
+            return
+        self.snapshot()
+        self.d = Design()
+        self.layer = 0
+        self.name.set(f"design{self.cur_slot + 1}")
+        self.vL.set(self.d.L); self.vW.set(self.d.W); self.vH.set(self.d.H)
+        self.rebuild_grid()
+
+    def on_name_change(self):
+        self.dirty = True
+        if self.slots[self.cur_slot] is not None:
+            self.slots[self.cur_slot]["name"] = self.name.get()
+        self.update_tab_labels()
+
+    def update_tab_labels(self):
+        if not hasattr(self, "tab_buttons"):
+            return
+        for i, b in enumerate(self.tab_buttons):
+            s = self.slots[i]
+            name = self.name.get() if i == self.cur_slot else (s["name"] if s and s["d"] is not None else "empty")
+            b.config(text=f"{i + 1}: {name[:12]}")
+
+    def on_close(self):
+        self.store_tab()
+        self.save_tabs()
+        self.root.destroy()
 
     def sync_from_design(self):
         """Update checkboxes after a different design was loaded."""
@@ -1186,7 +1332,9 @@ class App:
         with open(me, "w", encoding="utf-8", newline="\n") as f:
             f.write(new_code)
 
-        # save what's open so the new version can load it
+        # save all tabs + what's open so the new version can load it
+        self.store_tab()
+        self.save_tabs()
         os.makedirs(DESIGN_DIR, exist_ok=True)
         resume = os.path.join(DESIGN_DIR, "_resume.txt")
         with open(resume, "w", newline="\n") as f:

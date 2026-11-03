@@ -553,44 +553,95 @@ while torchCount > 0 do
 end
 
 ---------------------------------------------------------------- dig
-local function hasTodoNeighbour(cx, cy, cz)
+-- Bottom up: the design is split into 3-high bands (layers 1-3, 4-6, ...).
+-- Each band is finished completely before the turtle moves up to the next,
+-- so it never leaves dark, half-dug spaces below it.
+local band = nil                       -- band being dug (nil = anything left)
+local bandTodo = {}
+local function bandOf(cy) return math.floor(cy / 3) end
+for i = 1, L * W * H do
+  if st[i] == 1 then
+    local _, cy = decode(i)
+    local b = bandOf(cy)
+    bandTodo[b] = (bandTodo[b] or 0) + 1
+  end
+end
+
+-- keep the band counts right whenever any block gets dug
+local plainOpened = opened
+opened = function(i)
+  if st[i] == 1 then
+    local _, cy = decode(i)
+    local b = bandOf(cy)
+    bandTodo[b] = bandTodo[b] - 1
+  end
+  plainOpened(i)
+end
+
+local function want(cx, cy, cz)
+  return get(cx, cy, cz) == 1 and (band == nil or bandOf(cy) == band)
+end
+
+local function hasWantNeighbour(cx, cy, cz)
   for _, n in ipairs(NB) do
-    if get(cx + n[1], cy + n[2], cz + n[3]) == 1 then return true end
+    if want(cx + n[1], cy + n[2], cz + n[3]) then return true end
   end
   return false
 end
 
-while todo > 0 do
-  checkup()
-  progress("Digging")
-  -- stand in the middle of each 3-high band so up/down get dug for free
-  if y % 3 ~= 1 and get(x, y + 1, z) == 1 then
-    up()
-  else
-    digAbove()
-    digBelow()
-    -- walk into an undug neighbour: forward, right, left, back
-    local moved = false
-    for _, turn in ipairs({ 0, 1, 3, 2 }) do
-      local d = (dir + turn) % 4
-      if get(x + DX[d], y, z + DZ[d]) == 1 then
-        face(d); forward(); moved = true
-        break
+local function remaining()
+  if band then return bandTodo[band] or 0 end
+  return todo
+end
+
+local function digLoop(label)
+  while remaining() > 0 do
+    checkup()
+    progress(label)
+    -- stand in the middle of each 3-high band so up/down get dug for free
+    if y % 3 ~= 1 and want(x, y + 1, z) then
+      up()
+    else
+      if want(x, y + 1, z) then digAbove() end
+      if want(x, y - 1, z) then digBelow() end
+      -- walk into an undug neighbour: forward, right, left, back
+      local moved = false
+      for _, turn in ipairs({ 0, 1, 3, 2 }) do
+        local d = (dir + turn) % 4
+        if want(x + DX[d], y, z + DZ[d]) then
+          face(d); forward(); moved = true
+          break
+        end
       end
-    end
-    if not moved and todo > 0 then
-      local path = findPath(hasTodoNeighbour) or findPath(hasTodoNeighbour, "torch")
-      if path then
-        walk(path)
-      else
-        -- part of the design isn't connected: tunnel to it
-        path = findPath(function(a, b, c) return get(a, b, c) == 1 end, true)
-        if not path then break end
-        walk(path)
+      if not moved and remaining() > 0 then
+        local path = findPath(hasWantNeighbour)
+          or findPath(hasWantNeighbour, "marked")
+          or findPath(hasWantNeighbour, "torch")
+        if path then
+          walk(path)
+        elseif band then
+          return -- rest of this band can't be reached yet; picked up at the end
+        else
+          -- part of the design isn't connected: tunnel to it
+          path = findPath(function(a, b, c) return get(a, b, c) == 1 end, true)
+          if not path then return end
+          walk(path)
+        end
       end
     end
   end
 end
+
+local bands = math.floor((H - 1) / 3) + 1
+for b = 0, bands - 1 do
+  if (bandTodo[b] or 0) > 0 then
+    band = b
+    local top = math.min(H, b * 3 + 3)
+    digLoop(("Layers %d-%d"):format(b * 3 + 1, top))
+  end
+end
+band = nil
+digLoop("Finishing")
 
 ---------------------------------------------------------------- torches
 local function torchSpot(cx, cy, cz)

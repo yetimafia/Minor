@@ -34,6 +34,7 @@ The turtle downloads the newest version of the design from this repo each time. 
 - Put a **chest directly behind** the turtle. When the turtle fills up, it comes back and empties into it.
 - Put **fuel** (coal, charcoal, lava buckets…) in the turtle. If it runs low it burns coal it has dug up. If that's not enough, it comes home and asks for more.
 - If your design has **trapdoors** or **water**, put trapdoors and water buckets in the turtle (one bucket per water spot). They're placed **at the very end**, after everything is dug: trapdoors first, then water. The turtle never burns or unloads them, and comes home to ask if it runs out.
+- The turtle digs **bottom up**: it finishes each 3-block-high band of layers completely before moving up, so there are no dark half-dug spaces left below it.
 - Put **torches** in the turtle. It **lights the room first**: it digs a path to each torch spot and places the torch, then digs out everything else, so mobs can't spawn while it works. It keeps torches when it empties into the chest, and comes home to ask for more if it runs out. Add `notorch` to skip torches: `minor box 20 20 5 notorch`.
 
 ## Opening trapdoors (datapack)
@@ -59,6 +60,10 @@ python designer.py
 ```
 
 You only need Python 3. On Windows, get it from python.org; tkinter is included.
+
+### Tabs (auto-saved)
+
+The designer has **5 tabs** across the top, and each one holds its own design. Everything is saved automatically a couple of seconds after each change, when you switch tabs, and when you close the designer. All 5 tabs come back next time you open it, and after **Update designer**. *New in this tab* starts a blank design in the current tab. The tabs are stored in `designs/_tabs/` on your PC; they don't get uploaded.
 
 ### Drawing
 
