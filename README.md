@@ -173,6 +173,7 @@ You don't need Git installed.
 | `minor https://…/name.txt` | Dig a design from any link |
 | `minor box 20 20 5 notorch` | Add `notorch` to skip torches |
 | `minor update` | Download the newest `minor` |
+| `minor test` | Check the version, items, and whether trapdoor opening works |
 
 **Example designs** to try: `cave-base` (the one in the pictures), `dome`, `tunnel`.
 
@@ -180,7 +181,7 @@ You don't need Git installed.
 
 ## 🚪 Opening trapdoors
 
-Out of the box, CC: Tweaked doesn't let turtles click trapdoors. To have them opened, add this tiny datapack to your world. It only adds wooden trapdoors to CC's list of blocks turtles may use.
+Needs **CC: Tweaked 1.104 or newer** (Minecraft 1.19.4+). Out of the box, CC: Tweaked doesn't let turtles click trapdoors. To have them opened, add this tiny datapack to your world. It only adds wooden trapdoors to CC's list of blocks turtles may use.
 
 1. Download **[minor_trapdoors.zip](datapack/minor_trapdoors.zip)**.
 2. Put the zip (don't unzip it) in your world's `datapacks` folder:
@@ -193,6 +194,15 @@ In the designer, mark each trapdoor **open** or **closed** (see *Drawing tools*)
 ---
 
 ## 🛠️ Troubleshooting
+
+<details>
+<summary><b>Trapdoors don't open</b></summary>
+
+Run **`minor test`** on the turtle with 1 trapdoor and 1 stick in it, and an empty space in front. It tells you exactly what's wrong:
+- **"older than 1.104"**: your CC: Tweaked (Minecraft 1.19.2 or older) can't let turtles open trapdoors at all. They'll be placed closed.
+- **"did NOT open"**: the datapack isn't loaded. Put `minor_trapdoors.zip` in the world's `datapacks` folder, run `/reload`, and check that `/datapack list` shows it as enabled.
+- **"OPENED - all good!"**: opening works; make sure the trapdoors are marked *open* in the designer.
+</details>
 
 <details>
 <summary><b>The turtle says "Not Found"</b></summary>

@@ -4,6 +4,7 @@
 --   minor <design>                        dig a design made with designer.py
 --   minor <url>                           dig a design straight from a link
 --   minor update                          download the newest minor
+--   minor test                            check version, items and trapdoor opening
 --   add "notorch" to skip placing torches
 --
 -- Order of work: light the room (torches), dig everything, then place
@@ -66,6 +67,69 @@ local args, useTorches = {}, true
 for _, a in ipairs({ ... }) do
   if a:lower() == "notorch" or a:lower() == "notorches" then useTorches = false
   else args[#args + 1] = a end
+end
+
+if args[1] == "test" then
+  term.clear(); term.setCursorPos(1, 1)
+  print("== minor test ==")
+  local host = tostring(_HOST)
+  print(host)
+  local maj, mnr = host:match("ComputerCraft (%d+)%.(%d+)")
+  local newEnough = maj and (tonumber(maj) > 1 or tonumber(mnr) >= 104)
+  print("HTTP: " .. (http and "on" or "OFF (ask the server owner)"))
+  print("Fuel: " .. tostring(turtle.getFuelLevel()))
+  local trap, stick = nil, nil
+  local items = {}
+  for i = 1, 16 do
+    local d = turtle.getItemDetail(i)
+    if d then
+      items[#items + 1] = d.name:gsub("^minecraft:", "") .. " x" .. d.count
+      if d.name:find("trapdoor") and not trap then trap = i end
+      if d.name == "minecraft:stick" and not stick then stick = i end
+    end
+  end
+  print("Items: " .. (#items > 0 and table.concat(items, ", ") or "none"))
+  if maj and not newEnough then
+    print("")
+    print("This CC: Tweaked is older than 1.104,")
+    print("so turtles can't open trapdoors at all.")
+    print("Trapdoors will be placed closed.")
+    return
+  end
+  if not (trap and stick) then
+    print("")
+    print("For a trapdoor test, give me 1 trapdoor")
+    print("and 1 stick, with an empty space in front.")
+    return
+  end
+  if turtle.detect() then
+    print("")
+    print("Clear the block in front of me to test.")
+    return
+  end
+  turtle.select(trap)
+  local ok, err = turtle.place()
+  if not ok then
+    print("Couldn't place the test trapdoor: " .. tostring(err))
+    turtle.select(1)
+    return
+  end
+  turtle.select(stick)
+  local _, useErr = turtle.place()
+  local seen, data = turtle.inspect()
+  local isOpen = seen and data.state and data.state.open
+  if isOpen then
+    print("Trapdoor test: OPENED - all good!")
+  else
+    print("Trapdoor test: did NOT open (" .. tostring(useErr) .. ")")
+    print("-> Put minor_trapdoors.zip in the world's")
+    print("   datapacks folder and run /reload.")
+    print("   Check it with /datapack list")
+  end
+  turtle.select(trap)
+  turtle.dig() -- take the test trapdoor back
+  turtle.select(1)
+  return
 end
 
 if args[1] == "update" then
@@ -682,7 +746,7 @@ end
 -- CC: Tweaked doesn't allow turtles to click trapdoors, so this only works
 -- with the minor datapack installed (see README). We check it really opened.
 local openWorks = nil            -- nil = not tried yet, false = turtles can't open them here
-local trapsOpened, noStick = 0, false
+local trapsOpened, noStick, openErr = 0, false, nil
 
 local function tryOpen(how)
   if openWorks == false then return end
@@ -690,9 +754,10 @@ local function tryOpen(how)
   if not s then noStick = true; return end
   turtle.select(s)
   local look
-  if how == "down" then turtle.placeDown(); look = turtle.inspectDown
-  elseif how == "up" then turtle.placeUp(); look = turtle.inspectUp
-  else turtle.place(); look = turtle.inspect end -- already facing it
+  local _, err
+  if how == "down" then _, err = turtle.placeDown(); look = turtle.inspectDown
+  elseif how == "up" then _, err = turtle.placeUp(); look = turtle.inspectUp
+  else _, err = turtle.place(); look = turtle.inspect end -- already facing it
   turtle.select(1)
   local ok, data = look()
   if ok and data.state and data.state.open then
@@ -700,6 +765,7 @@ local function tryOpen(how)
     openWorks = true
   elseif openWorks == nil then
     openWorks = false
+    openErr = err
   end
 end
 
@@ -769,8 +835,15 @@ if openCount > 0 and trapsPlaced > 0 then
   if trapsOpened > 0 then print("Opened " .. trapsOpened .. " trapdoors.")
   elseif noStick then print("No stick, so trapdoors were left closed.")
   elseif openWorks == false then
-    print("Couldn't open trapdoors - this world needs")
-    print("the minor datapack (see the README).")
+    local maj, mnr = tostring(_HOST):match("ComputerCraft (%d+)%.(%d+)")
+    if maj and tonumber(maj) == 1 and tonumber(mnr) < 104 then
+      print("Couldn't open trapdoors: CC: Tweaked is")
+      print("older than 1.104, which can't do it.")
+    else
+      print("Couldn't open trapdoors (" .. tostring(openErr) .. ").")
+      print("Add the minor datapack, run /reload,")
+      print("then 'minor test' to check.")
+    end
   end
 end
 if trapsLeft + waterLeft > 0 then
