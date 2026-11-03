@@ -1,131 +1,269 @@
-# minor
+<div align="center">
 
-A turtle program for CC: Tweaked (ComputerCraft) that digs out rooms and custom shapes up to **64 × 64 × 64** and places torches. It comes with a Python designer you run on your PC to draw what to dig.
+# ⛏️ minor
 
-## Install on a turtle
+**Design rooms on your PC, then let a ComputerCraft turtle dig them out for you.**
 
-```
-wget run https://raw.githubusercontent.com/yetimafia/Minor/main/install.lua
-```
+Draw it layer by layer, preview it in 3D, click upload, and paste one command into your turtle.<br>
+It lights the room with torches, digs from the bottom up, and adds trapdoors and water at the end.
 
-Update later with `minor update`.
+![CC: Tweaked](https://img.shields.io/badge/CC%3A%20Tweaked-turtle-3f9f62?style=flat-square)
+![Python 3](https://img.shields.io/badge/Python-3.8%2B-3f9f62?style=flat-square&logo=python&logoColor=white)
+![three.js r149](https://img.shields.io/badge/three.js-r149-3f9f62?style=flat-square&logo=three.js&logoColor=white)
+![Max size](https://img.shields.io/badge/max%20size-64%C3%9764%C3%9764-3f9f62?style=flat-square)
 
-## Dig a plain room
+<img src="docs/dig-order.gif" alt="A cave base being dug out layer by layer, from the bottom up" width="640">
 
-```
-minor box <length> <width> <height>
-minor box 20 15 6
-```
+<sub>A cave base, shown layer by layer in the order the turtle digs it</sub>
 
-Put the turtle in the **front-left-bottom corner** of the room. It digs forward, to the right, and up.
+</div>
 
-## Dig a design
+---
 
-```
-minor dome
-minor tunnel
-minor <your design name>
-```
+## 🚀 Quick start
 
-The turtle downloads the newest version of the design from this repo each time. Put it where the design's green **S** is, facing the way the designer grid points (up).
+**1. Get the designer** (on your PC, needs [Python 3](https://www.python.org/downloads/))
 
-## Before you start
-
-- Put a **chest directly behind** the turtle. When the turtle fills up, it comes back and empties into it.
-- Put **fuel** (coal, charcoal, lava buckets…) in the turtle. If it runs low it burns coal it has dug up. If that's not enough, it comes home and asks for more.
-- If your design has **trapdoors** or **water**, put trapdoors and water buckets in the turtle (one bucket per water spot). They're placed **at the very end**, after everything is dug: trapdoors first, then water. The turtle never burns or unloads them, and comes home to ask if it runs out.
-- The turtle digs **bottom up**: it finishes each 3-block-high band of layers completely before moving up, so there are no dark half-dug spaces left below it.
-- Put **torches** in the turtle. It **lights the room first**: it digs a path to each torch spot and places the torch, then digs out everything else, so mobs can't spawn while it works. It keeps torches when it empties into the chest, and comes home to ask for more if it runs out. Add `notorch` to skip torches: `minor box 20 20 5 notorch`.
-
-## Opening trapdoors (datapack)
-
-When **Open them after placing** is checked in the designer (it's on by default), the turtle clicks each trapdoor open with a **stick** right after placing it. Put 1 stick in the turtle.
-
-Plain CC: Tweaked doesn't let turtles click trapdoors, so the world needs a tiny datapack that adds wooden trapdoors to CC's list of blocks turtles may use:
-
-1. Download [`datapack/minor_trapdoors.zip`](datapack/minor_trapdoors.zip).
-2. Put the zip, without unzipping it, in your world's `datapacks` folder:
-   - Singleplayer: `.minecraft/saves/<your world>/datapacks/`
-   - Server: `<server>/world/datapacks/`
-3. Run `/reload`, or reopen the world.
-
-Without the datapack, the turtle notices the trapdoor didn't open, leaves the rest closed, and tells you at the end. Iron trapdoors can't be opened by clicking, even by players.
-
-## The designer (on your PC)
-
-Download the designer straight from this link (right-click, then *Save link as*):
-
-**https://raw.githubusercontent.com/yetimafia/Minor/main/designer.py**
-
-Or clone the repo. Then run:
+Right-click this link and choose *Save link as*: **[designer.py](https://raw.githubusercontent.com/yetimafia/Minor/main/designer.py)**. Then double-click it, or run:
 
 ```
 python designer.py
 ```
 
-You only need Python 3. On Windows, get it from python.org; tkinter is included.
+**2. Draw your room** and click **1. Upload to GitHub**, then **2. Copy turtle command**.
 
-### Tabs (auto-saved)
+**3. Paste it into your turtle** (click the turtle's screen, press <kbd>Ctrl</kbd>+<kbd>V</kbd>, then <kbd>Enter</kbd>). It installs `minor` and starts digging, even on a brand-new turtle.
 
-Each tab across the top holds its own design.
-- **Click** a tab to open it, and **drag** it left or right to reorder.
-- **×** deletes a tab; it asks first if the tab has anything in it. **+** adds a new tab, up to 10.
-- Everything saves automatically a couple of seconds after each change, when you switch tabs, and when you close the designer. All tabs come back, in order, next time you open it and after **Update designer**.
-- Tabs are stored in `designs/_tabs/` on your PC and don't get uploaded.
+> 💡 **Just want a plain room?** You can skip the designer. On the turtle:
+> ```
+> wget run https://raw.githubusercontent.com/yetimafia/Minor/main/install.lua
+> minor box 20 15 6
+> ```
 
-### Opening designs from a link
+---
 
-**Open from URL...** (next to *Open...*) loads a design from the web into the current tab. You can paste:
-- a raw link (`https://raw.githubusercontent.com/.../designs/name.txt`)
-- a normal GitHub file link (`https://github.com/.../blob/main/designs/name.txt`)
-- the whole turtle command from *Copy turtle command*
+## 🐢 Before you press Enter
 
-It also lists every design in your repo, so you can double-click one to open it. If you copied a link before opening the window, it's filled in for you.
+Put the turtle where the design's green **S** is, facing the way the grid points (up). For `minor box`, use the front-left-bottom corner of the room. Then:
 
-### Drawing
+| Put this... | Where | Why |
+|---|---|---|
+| 📦 **A chest** | directly **behind** the turtle | It comes back and empties its inventory here when it's full |
+| 🔥 **Fuel** (coal, charcoal…) | in the turtle | It also burns coal it digs up, and comes home to ask if it runs low |
+| 🕯️ **Torches** | in the turtle | Placed first, so mobs can't spawn while it works |
+| 🚪 **Trapdoors** | in the turtle | Only if your design has them. Placed at the end |
+| 🪣 **Water buckets** | in the turtle | One per water spot. Placed last |
+| 🥢 **1 stick** | in the turtle | Only if you want trapdoors opened (needs the [datapack](#-opening-trapdoors)) |
 
-- You see one layer at a time from above. ▲/▼ (or Page Up/Down) changes layers.
-- **Show neighbour layer** (or press **G**) switches between seeing what's dug on the layer below (blue), the layer above (red), or neither.
-- **Light** squares get dug, **dark** squares are left alone, and **orange** squares get dug and get a torch.
-- Tools: dig pen, eraser (right-click always erases), torch pen, **trapdoor pen**, **water bucket pen**, rectangles, and *Set turtle start*. Trapdoor and water squares get dug like normal, then get their item placed at the end. The green **S** is the start and the brown **C** is the chest.
-- Shape buttons: box, sphere, dome, cylinder, and arch tunnel. *Copy to ALL layers above* turns a floor plan into a 3D room.
-- **★ Shape through layers** stamps a rectangle, circle, ring, walls, diamond or plus across a range of layers. Give it a size for the first and last layer and it grows or shrinks in between, so you can make cones, pyramids, round towers and funnels. It can also *leave solid*, which cuts a pillar out of a room.
-- **Show water flow** previews where each water bucket will spread, using Minecraft's rules: up to 7 blocks out, shallower each block, falling down holes and heading toward a nearby drop. Walls and closed trapdoors stop it. The bottom bar warns you if water would wash away torches. The preview assumes everything outside your design is solid; real cave openings can let water escape.
-- *Auto place torches* puts torches on the floor every N blocks.
-- **Move the turtle:** drag the green **S**, or use the arrows in *Turtle start*. ▲▼◀▶ move it forward, back, left and right, and *Up*/*Down* move it between layers. The chest always goes right behind it.
-- The bottom bar shows block count, fuel needed, and warnings.
+The turtle never burns or unloads torches, trapdoors, water buckets or sticks.
+
+---
+
+## 🧭 What the turtle does, in order
+
+1. **Lights the room.** It digs a path to every torch spot and places each torch from directly above, so torches land on the floor and not the walls.
+2. **Digs bottom up.** It clears layers 1–3 completely, then 4–6, and so on. It stands in the middle layer of each band, so every move clears three blocks.
+3. **Places trapdoors.** It opens them too, if you asked it to.
+4. **Places water last**, so water can't flow into spots that still need a trapdoor.
+5. **Comes home**, empties into the chest, and tells you what it did.
+
+Along the way it deals with falling gravel and sand and with mobs in the way. If it hits bedrock, it waits for you. It never digs blocks your design says to keep. The one exception: if part of your design isn't connected to the rest, it digs a small tunnel to reach it, and the designer warns you about this beforehand.
+
+---
+
+## 🎨 The designer
+
+<img src="docs/designer.png" alt="The minor designer" width="100%">
+
+You look down on **one layer at a time**. The top of the grid is the way the turtle faces.
+
+| Square | Means |
+|---|---|
+| 🟨 light sand | the turtle digs this |
+| ⬛ dark stone | left alone |
+| 🕯️ torch | dug, then a torch is placed on the floor |
+| 🟫 hatch | dug, then a trapdoor is placed (at the end) |
+| 🟦 waves | dug, then a water bucket is placed (last) |
+| 🟩 **S** / 🟫 **C** | where the turtle starts / where the chest goes |
+
+### Drawing tools
+
+- **Pens:** dig, keep (eraser), torch, trapdoor and water. **Right-click always erases.**
+- **Rectangles:** drag to fill or clear a box.
+- **Turtle start:** drag the **S**, or use the arrow buttons. *Up*/*Down* move it between layers.
+- **This layer:** fill, clear, *Copy to layer above*, or *Copy to ALL layers above*, which turns a floor plan into a room.
+- **Undo** with <kbd>Ctrl</kbd>+<kbd>Z</kbd>. Change layers with the arrows or <kbd>Page Up</kbd>/<kbd>Page Down</kbd>.
+- **Show neighbour layer:** see what's dug on the layer **below** (blue) or **above** (red). Press <kbd>G</kbd> to switch.
+
+### Shapes
+
+<img src="docs/shapes.png" alt="Shape through layers window" width="420" align="right">
+
+**Whole design:** one click for a box, sphere, dome, cylinder or arch tunnel.
+
+**★ Shape through layers:** stamps a rectangle, circle, ring, walls, diamond or plus across a range of layers. Give it a size for the first and the last layer and it grows or shrinks in between:
+
+- Circle shrinking to 1 = **cone**
+- Rectangle shrinking to 1 = **pyramid**
+- Ring, same size top and bottom = **round tower**
+- *Leave it solid* = cut **pillars** out of a room
+
+<br clear="right">
+
+### Torches and water
+
+<img src="docs/water-flow.png" alt="Water flow preview" width="300" align="right">
+
+- **Auto place torches** puts torches on the floor every *N* blocks. It skips spots where water will flow.
+- **Show water flow** previews where each bucket will spread, using Minecraft's rules: up to 7 blocks out and shallower each block, pouring down holes and heading for nearby drops. Walls and closed trapdoors stop it.
+- The bottom bar shows the block count, fuel needed (in coal), items needed, and warnings, such as water that would wash away a torch.
+
+<br clear="right">
+
+### Tabs that save themselves
+
+<img src="docs/tabs.png" alt="Tabs" width="560">
+
+Each tab holds its own design. **Drag** tabs to reorder them, **×** to delete, and **+** to add (up to 10). Everything **saves automatically** a couple of seconds after each change, and all your tabs come back next time you open the designer.
 
 ### 3D view
 
-Click **3D view** in the top bar (or press **Ctrl+D**). Your design opens in a Chrome tab as a 3D model, made with three.js r149.
+Click **3D view** (or <kbd>Ctrl</kbd>+<kbd>D</kbd>) to open your design in a Chrome tab, built with three.js r149.
 
-- **Hollowed out:** solid rock with your mined space carved out. Cave walls are lighter, so the shape stands out, and it opens cut in half so you can see inside.
-- **Blocks to mine:** only the blocks the turtle will dig.
-- **Show up to layer** and **Slice from turtle side** cut the model open. **See-through** shows torches inside.
-- Left-drag rotates, right-drag moves, and scrolling zooms. *Top* view matches the designer grid.
+<table>
+<tr>
+<td width="50%"><img src="docs/3d-hollow.png" alt="Hollowed out view"></td>
+<td width="50%"><img src="docs/3d-mine.png" alt="Blocks to mine view"></td>
+</tr>
+<tr>
+<td align="center"><b>Hollowed out</b>: rock with your room carved out, opened up so you can see inside</td>
+<td align="center"><b>Blocks to mine</b>: just the blocks the turtle will dig</td>
+</tr>
+</table>
 
-It needs an internet connection to load three.js. If Chrome isn't installed, it opens in your default browser.
-
-### Updating the designer
-
-Click **⟳ Update designer**. It downloads the newest version, closes, and reopens with your current design still open. The old version is kept as `designer.py.bak`.
+Slice it from the top or from the turtle's side, turn on **See-through**, and drag to spin it around. It needs internet the first time so it can load three.js.
 
 ### Sending it to the turtle
 
-1. Click **1. Upload to GitHub**. The first time, it asks for a GitHub token:
-   - Go to **github.com/settings/personal-access-tokens/new**.
-   - *Repository access*: Only select repositories → `minor`.
-   - *Permissions → Repository permissions → Contents*: **Read and write**.
-   - Generate the token and paste it in. It's saved in `minor_settings.json` on your PC only and is never uploaded.
-2. Click **2. Copy turtle command**.
-3. Click the turtle's screen, press **Ctrl+V**, then **Enter**. It installs or updates `minor` and digs your design. It works on a brand-new turtle too.
+1. **1. Upload to GitHub.** The first time, it asks for a GitHub token:
+   - Go to **[github.com/settings/personal-access-tokens/new](https://github.com/settings/personal-access-tokens/new)**.
+   - *Repository access*: Only select repositories → your repo.
+   - *Permissions → Contents*: **Read and write**.
+   - Paste the token in. It's saved only on your PC, in `minor_settings.json`, which is never uploaded.
+2. **2. Copy turtle command**, then paste it into the turtle.
 
-## Design file format
+You don't need Git installed.
+
+### Other handy buttons
+
+- **Open from URL…** loads a design from a link. You can paste a raw link, a github.com link or a whole turtle command, or pick from the list of designs in your repo.
+- **⟳ Update designer** downloads the newest version and restarts with your work still open.
+- **Open… / Save** reads and writes `.txt` design files in the `designs` folder.
+
+---
+
+## 🐢 Turtle commands
+
+| Command | What it does |
+|---|---|
+| `minor box 20 15 6` | Dig a plain room: length (forward), width (right), height. Max 64 each |
+| `minor cave-base` | Dig a design from this repo, by name |
+| `minor https://…/name.txt` | Dig a design from any link |
+| `minor box 20 20 5 notorch` | Add `notorch` to skip torches |
+| `minor update` | Download the newest `minor` |
+
+**Example designs** to try: `cave-base` (the one in the pictures), `dome`, `tunnel`.
+
+---
+
+## 🚪 Opening trapdoors
+
+Out of the box, CC: Tweaked doesn't let turtles click trapdoors. To have them opened, add this tiny datapack to your world. It only adds wooden trapdoors to CC's list of blocks turtles may use.
+
+1. Download **[minor_trapdoors.zip](datapack/minor_trapdoors.zip)**.
+2. Put the zip (don't unzip it) in your world's `datapacks` folder:
+   - Singleplayer: `.minecraft/saves/<your world>/datapacks/`
+   - Server: `<server>/world/datapacks/`
+3. Run `/reload` (or reopen the world), and give the turtle **1 stick**.
+
+In the designer, **Trapdoors → Open them after placing** turns this on or off for each design. Without the datapack, the turtle notices and leaves them closed.
+
+---
+
+## 🛠️ Troubleshooting
+
+<details>
+<summary><b>The turtle says "Not Found"</b></summary>
+
+The link points at the wrong repo. In the designer, click **GitHub settings**, use **Use default repo** (or type `yetimafia/Minor`), click Save, then upload and copy the command again.
+</details>
+
+<details>
+<summary><b>The turtle says HTTP is turned off</b></summary>
+
+The server has disabled HTTP for ComputerCraft. Ask the server owner to enable `http` in the CC: Tweaked config.
+</details>
+
+<details>
+<summary><b>The turtle stopped and says it's stuck</b></summary>
+
+It hit something it can't dig, like bedrock or a protected block. Clear the way, then press any key on the turtle to continue.
+</details>
+
+<details>
+<summary><b>Upload fails with 401 / 403 / 404</b></summary>
+
+401 or 403 means the token is wrong, expired, or doesn't have **Contents: Read and write**. 404 means the repo name in **GitHub settings** is wrong, or the token can't see that repo.
+</details>
+
+<details>
+<summary><b>Update designer fails on a Mac (certificate error)</b></summary>
+
+Open *Applications → Python 3.x* and run **Install Certificates.command**, then try again.
+</details>
+
+<details>
+<summary><b>A torch didn't get placed</b></summary>
+
+Torches are always placed from directly above, so a torch spot needs open space above it and solid floor below it. In caves, open air under a spot means there's no floor. The designer warns about torches with nothing above them.
+</details>
+
+<details>
+<summary><b>The water went somewhere the preview didn't show</b></summary>
+
+The preview assumes everything outside your design is solid rock. Real caves can have openings next to your design that let water escape.
+</details>
+
+<details>
+<summary><b>I lost a design I didn't save</b></summary>
+
+Check the designer's tabs first, since they save automatically. Every upload is also kept in this repo's history on GitHub. The turtle also keeps the last design it downloaded in its `designs` folder (`ls designs`).
+</details>
+
+---
+
+## 📁 What's in here
+
+| File | What it is |
+|---|---|
+| [`designer.py`](designer.py) | The designer app for your PC (one file, needs only Python 3) |
+| [`minor.lua`](minor.lua) | The turtle program |
+| [`install.lua`](install.lua) | Installs or updates `minor` on a turtle, then runs your design |
+| [`designs/`](designs) | Uploaded designs: the turtle downloads them from here |
+| [`datapack/`](datapack) | The trapdoor datapack |
+| [`docs/`](docs) | Pictures for this page |
+
+<details>
+<summary><b>Design file format</b> (for the curious)</summary>
 
 ```
 minor-design 1
 size <length> <width> <height>
 start <x> <y> <z>
+trapdoors open          (optional)
 layer 0
-<one line per row, run-length: 3.10#1T>   . keep   # dig   T torch   D trapdoor   W water
+<one line per row, run-length encoded, e.g. 3.10#1T>
 ```
+
+`.` keep · `#` dig · `T` torch · `D` trapdoor · `W` water. `x` is forward, `z` is right, and `y` is up.
+</details>

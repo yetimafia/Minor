@@ -209,6 +209,31 @@ def design_url_from(text):
     return url
 
 
+def arrow_image(direction, size=14, color=None):
+    """A small triangle picture for arrow buttons (works with any font)."""
+    color = color or THEME["heading"]
+    img = tk.PhotoImage(width=size, height=size)
+    pad = 3
+    for row in range(size):
+        for col in range(size):
+            # point "up" triangle, then rotate the test for other directions
+            if direction == "up":
+                a, b = row, col
+            elif direction == "down":
+                a, b = size - 1 - row, col
+            elif direction == "left":
+                a, b = col, row
+            else:  # right
+                a, b = size - 1 - col, row
+            top = pad + 1
+            bottom = size - pad - 1
+            if top <= a <= bottom:
+                half = (a - top + 1) * (size / 2 - pad) / (bottom - top + 1)
+                if abs(b + 0.5 - size / 2) <= half:
+                    img.put(color, (col, row))
+    return img
+
+
 def open_in_chrome(url):
     """Open url in Google Chrome if we can find it. Returns True on success."""
     candidates = []
@@ -546,10 +571,11 @@ class App:
         lay.pack(fill="x", pady=(0, 6))
         row = ttk.Frame(lay)
         row.pack()
-        ttk.Button(row, text="▼", width=3, command=lambda: self.change_layer(-1)).pack(side="left")
+        self.arrows = {d: arrow_image(d) for d in ("up", "down", "left", "right")}
+        ttk.Button(row, image=self.arrows["down"], width=3, command=lambda: self.change_layer(-1)).pack(side="left")
         self.layer_label = ttk.Label(row, text="", width=10, anchor="center")
         self.layer_label.pack(side="left")
-        ttk.Button(row, text="▲", width=3, command=lambda: self.change_layer(1)).pack(side="left")
+        ttk.Button(row, image=self.arrows["up"], width=3, command=lambda: self.change_layer(1)).pack(side="left")
         ttk.Label(lay, text="Show neighbour layer:").pack(anchor="w", pady=(6, 0))
         gr = ttk.Frame(lay)
         gr.pack(anchor="w")
@@ -611,10 +637,10 @@ class App:
         tp.pack(fill="x", pady=(0, 6))
         pad = ttk.Frame(tp)
         pad.pack()
-        arrows = (("▲", 0, 1, (1, 0, 0)), ("◀", 1, 0, (0, 0, -1)), ("▶", 1, 2, (0, 0, 1)),
-                  ("▼", 2, 1, (-1, 0, 0)))
-        for text, r, c, delta in arrows:
-            ttk.Button(pad, text=text, width=3,
+        arrows = (("up", 0, 1, (1, 0, 0)), ("left", 1, 0, (0, 0, -1)), ("right", 1, 2, (0, 0, 1)),
+                  ("down", 2, 1, (-1, 0, 0)))
+        for name, r, c, delta in arrows:
+            ttk.Button(pad, image=self.arrows[name], width=3,
                        command=lambda d=delta: self.move_start(*d)).grid(row=r, column=c)
         ttk.Button(pad, text="Up", width=6, command=lambda: self.move_start(0, 1, 0)).grid(row=0, column=3, padx=(8, 0))
         ttk.Button(pad, text="Down", width=6, command=lambda: self.move_start(0, -1, 0)).grid(row=2, column=3, padx=(8, 0))
@@ -1025,6 +1051,7 @@ class App:
         except (tk.TclError, ValueError):
             sp = 8
         count = 0
+        wet = d.water_flow()           # never put a torch where water will flow
         ox = ((d.L - 1) % sp) // 2   # centre the torch grid in the room
         oz = ((d.W - 1) % sp) // 2
         for y in range(d.H):
@@ -1032,7 +1059,8 @@ class App:
                 for z in range(oz, d.W, sp):
                     floor = y == 0 or not d.grid[y - 1][x][z]
                     room_above = y + 1 < d.H and d.grid[y + 1][x][z]
-                    if d.grid[y][x][z] == DIG and floor and room_above and (x, y, z) != d.start:
+                    if (d.grid[y][x][z] == DIG and floor and room_above and (x, y, z) != d.start
+                            and (x, y, z) not in wet):
                         d.grid[y][x][z] = TORCH
                         count += 1
         self.redraw()
