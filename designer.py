@@ -469,6 +469,11 @@ class App:
         bad = self.d.unreachable()
         if bad:
             text += f"   |   ⚠ {bad} blocks not connected to the start (turtle will tunnel to them)"
+        d = self.d
+        stuck = sum(1 for y in range(d.H) for x in range(d.L) for z in range(d.W)
+                    if d.grid[y][x][z] == TORCH and not (y + 1 < d.H and d.grid[y + 1][x][z]))
+        if stuck:
+            text += f"   |   ⚠ {stuck} torches have no dug space above (turtle places from above - they'll be skipped)"
         sx, sy, sz = self.d.start
         if sx - 1 >= 0 and self.d.grid[sy][sx - 1][sz]:
             text += "   |   ⚠ chest spot is marked to dig (it'll be skipped)"

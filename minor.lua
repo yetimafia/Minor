@@ -429,8 +429,20 @@ end
 ---------------------------------------------------------------- start
 turtle.select(1)
 refuelFromInventory()
-local torchCount = 0
-for _ in pairs(torchAt) do torchCount = torchCount + 1 end
+local torchCount, noRoom = 0, 0
+for i in pairs(torchAt) do
+  local tx, ty, tz = decode(i)
+  local above = get(tx, ty + 1, tz)
+  if above == 1 or above == 2 then
+    torchCount = torchCount + 1
+  else
+    torchAt[i] = nil -- nowhere to stand above it
+    noRoom = noRoom + 1
+  end
+end
+if noRoom > 0 then
+  print(noRoom .. " torch spots have no space above - skipping those")
+end
 print(("Size %d x %d x %d, %d blocks to dig"):format(L, W, H, todo))
 if torchCount > 0 then print(torchCount .. " torches - I'll light the room first") end
 if fuel() ~= math.huge then
@@ -461,44 +473,28 @@ local function canLight(i)
   return torchAt[i] and (st[i] == 1 or st[i] == 2)
 end
 
--- standing at (cx,cy,cz), which way can I place a torch? (side first, then down)
+-- Torches are only ever placed from DIRECTLY ABOVE (placeDown), so they
+-- always stand on the floor. Placing sideways would stick them on a wall.
+-- Standing at (cx,cy,cz): is the block under me a torch spot with floor under it?
 local function lightSpot(cx, cy, cz)
-  for d = 0, 3 do
-    local tx, tz = cx + DX[d], cz + DZ[d]
-    if inb(tx, cy, tz) and canLight(id(tx, cy, tz)) and solidBelow(tx, cy, tz)
-       and not (tx == sx and cy == sy and tz == sz) then
-      return d
-    end
-  end
   if inb(cx, cy - 1, cz) and canLight(id(cx, cy - 1, cz)) and solidBelow(cx, cy - 1, cz) then
     return "down"
   end
 end
 
-local function placeTorchFrom(how)
+local function placeTorchFrom()
   if not torchSlot() then tripHome(true) end
-  local ti, ok
-  turtle.select(torchSlot() or 1)
-  if how == "down" then
-    ti = id(x, y - 1, z)
-    if st[ti] == 1 then
-      while turtle.detectDown() do if not turtle.digDown() then break end end
-      opened(ti)
+  local ti = id(x, y - 1, z)
+  if st[ti] == 1 then
+    local n = 0
+    while turtle.detectDown() and n < 64 do
+      if not turtle.digDown() then break end
+      n = n + 1
     end
-    ok = turtle.placeDown()
-  else
-    face(how)
-    ti = id(x + DX[how], y, z + DZ[how])
-    if st[ti] == 1 then
-      local n = 0
-      while turtle.detect() and n < 64 do
-        if not turtle.dig() then break end
-        n = n + 1
-      end
-      opened(ti)
-    end
-    ok = turtle.place()
+    opened(ti)
   end
+  turtle.select(torchSlot() or 1)
+  local ok = turtle.placeDown()
   turtle.select(1)
   torchAt[ti] = nil
   if ok then st[ti] = 3 end
@@ -511,9 +507,8 @@ while torchCount > 0 do
   local path = findPath(function(a, b, c) return lightSpot(a, b, c) ~= nil end, "marked")
   if not path then break end
   walk(path)
-  local how = lightSpot(x, y, z)
-  if how == nil then break end
-  if placeTorchFrom(how) then lit = lit + 1 end
+  if not lightSpot(x, y, z) then break end
+  if placeTorchFrom() then lit = lit + 1 end
   term.setCursorPos(1, 1); term.clearLine()
   write(("Lighting: %d of %d torches"):format(lit, torchCount))
 end
@@ -560,15 +555,9 @@ end
 
 ---------------------------------------------------------------- torches
 local function torchSpot(cx, cy, cz)
-  -- any torches still missing (no floor yet, or knocked off) get placed now
-  -- standing here, can I place a torch? returns how
-  if get(cx, cy - 1, cz) == 2 and torchAt[id(cx, cy - 1, cz)] then return "down" end
-  for d = 0, 3 do
-    local tx, tz = cx + DX[d], cz + DZ[d]
-    if get(tx, cy, tz) == 2 and torchAt[id(tx, cy, tz)]
-       and not (tx == sx and cy == sy and tz == sz) then
-      return d
-    end
+  -- any torches still missing (knocked off, etc.) get placed now - from above only
+  if get(cx, cy - 1, cz) == 2 and torchAt[id(cx, cy - 1, cz)] and solidBelow(cx, cy - 1, cz) then
+    return "down"
   end
 end
 
@@ -580,21 +569,12 @@ while remainingTorches > 0 do
   if not path then break end
   walk(path)
   if not torchSlot() then tripHome(true) end
-  local how = torchSpot(x, y, z)
+  local ti = id(x, y - 1, z)
   turtle.select(torchSlot() or 1)
-  local ti
-  if how == "down" then
-    ti = id(x, y - 1, z)
-    if turtle.placeDown() then placed = placed + 1 end
-  else
-    face(how)
-    ti = id(x + DX[how], y, z + DZ[how])
-    if turtle.place() then placed = placed + 1 end
-  end
-  torchAt[ti] = nil
-  st[ti] = 3
-  remainingTorches = remainingTorches - 1
+  if turtle.placeDown() then placed = placed + 1; st[ti] = 3 end
   turtle.select(1)
+  torchAt[ti] = nil
+  remainingTorches = remainingTorches - 1
   term.setCursorPos(1, 1); term.clearLine()
   write("Torches placed: " .. placed)
 end
