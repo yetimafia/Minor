@@ -56,11 +56,10 @@ def save_settings(s):
 def github(method, url, token, body=None):
     """Tiny GitHub API helper. Returns (status, json)."""
     data = json.dumps(body).encode() if body is not None else None
-    req = urllib.request.Request(url, data=data, method=method, headers={
-        "Authorization": "Bearer " + token,
-        "Accept": "application/vnd.github+json",
-        "User-Agent": "minor-designer",
-    })
+    headers = {"Accept": "application/vnd.github+json", "User-Agent": "minor-designer"}
+    if token:
+        headers["Authorization"] = "Bearer " + token
+    req = urllib.request.Request(url, data=data, method=method, headers=headers)
     try:
         ctx = ssl.create_default_context()
         try:
@@ -1015,10 +1014,36 @@ class App:
                                                  ("Token", token, "•")), start=1):
             ttk.Label(frm, text=label).grid(row=r, column=0, sticky="w", pady=2)
             ttk.Entry(frm, textvariable=var, width=46, show=show).grid(row=r, column=1, pady=2)
+        ttk.Button(frm, text="Use default repo", command=lambda: repo.set(DEFAULT_SETTINGS["repo"])).grid(
+            row=4, column=0, sticky="w", pady=(10, 0))
         result = {"ok": False}
 
         def ok():
-            self.settings.update(repo=repo.get().strip().strip("/"), branch=branch.get().strip() or "main",
+            r = repo.get().strip().strip("/")
+            for prefix in ("https://github.com/", "http://github.com/", "github.com/"):
+                if r.lower().startswith(prefix):
+                    r = r[len(prefix):]
+            r = r.removesuffix(".git")
+            if "/" not in r:  # just the repo name -> assume the same owner
+                r = DEFAULT_SETTINGS["repo"].split("/")[0] + "/" + r
+            # make sure the repo really exists before saving it
+            try:
+                code, info = github("GET", f"https://api.github.com/repos/{r}", token.get().strip())
+                if code == 401:  # bad token - check the repo without it
+                    code, info = github("GET", f"https://api.github.com/repos/{r}", "")
+            except Exception:
+                code, info = 0, {}
+            if code in (403, 404):
+                messagebox.showerror("GitHub settings", f"Can't find the repo '{r}' on GitHub.\n\n"
+                                     f"It should look like {DEFAULT_SETTINGS['repo']}", parent=win)
+                return
+            if code == 200 and isinstance(info, dict) and info.get("full_name"):
+                r = info["full_name"]  # fixes capital letters / renamed repos
+            if code == 200 and isinstance(info, dict) and info.get("private"):
+                messagebox.showwarning("GitHub settings", "That repo is private. Turtles can only download "
+                                       "from public repos - make it public in the repo's Settings.", parent=win)
+            repo.set(r)
+            self.settings.update(repo=r, branch=branch.get().strip() or "main",
                                  token=token.get().strip())
             save_settings(self.settings)
             self.refresh_command()
