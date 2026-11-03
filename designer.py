@@ -27,6 +27,7 @@ import pathlib
 import shutil
 import webbrowser
 import json
+import time
 import ssl
 import urllib.error
 import urllib.request
@@ -81,6 +82,35 @@ def github(method, url, token, body=None):
             return e.code, json.loads(e.read() or b"{}")
         except ValueError:
             return e.code, {}
+
+def http_get(url, headers=None, timeout=30):
+    """Download a URL and return the text."""
+    h = {"User-Agent": "minor-designer"}
+    h.update(headers or {})
+    ctx = ssl.create_default_context()
+    try:
+        import certifi
+        ctx = ssl.create_default_context(cafile=certifi.where())
+    except ImportError:
+        pass
+    req = urllib.request.Request(url, headers=h)
+    with urllib.request.urlopen(req, timeout=timeout, context=ctx) as r:
+        return r.read().decode("utf-8")
+
+
+def design_url_from(text):
+    """Turn whatever was pasted (raw link, github.com link, turtle command)
+    into a direct download link."""
+    import re
+    links = re.findall(r"https?://\S+", text.strip())
+    if not links:
+        return None
+    url = links[-1]  # in a turtle command the design link comes last
+    m = re.match(r"https?://github\.com/([^/]+)/([^/]+)/(?:blob|raw)/([^/]+)/(.+)", url)
+    if m:
+        url = "https://raw.githubusercontent.com/{}/{}/{}/{}".format(*m.groups())
+    return url
+
 
 def open_in_chrome(url):
     """Open url in Google Chrome if we can find it. Returns True on success."""
@@ -519,6 +549,7 @@ class App:
         self.stats = ttk.Label(bottom, text="", wraplength=560, justify="left")
         self.stats.pack(side="left")
         ttk.Button(bottom, text="Save", command=self.save).pack(side="right", padx=4)
+        ttk.Button(bottom, text="Open from URL...", command=self.open_url_dialog).pack(side="right", padx=(4, 0))
         ttk.Button(bottom, text="Open...", command=self.open).pack(side="right")
 
         gh = ttk.LabelFrame(self.root, text="Send to turtle", padding=6)
@@ -959,6 +990,93 @@ class App:
         self.name.set(os.path.splitext(os.path.basename(path))[0])
         self.layer = 0
         self.rebuild_grid()
+
+    # ---- open from URL ------------------------------------------------
+    def open_url_dialog(self):
+        win = tk.Toplevel(self.root)
+        win.title("Open design from URL")
+        win.transient(self.root)
+        f = ttk.Frame(win, padding=12)
+        f.pack(fill="both", expand=True)
+        ttk.Label(f, text="Paste a link to a design (or the turtle command):").pack(anchor="w")
+        url = tk.StringVar()
+        try:  # pre-fill from the clipboard if it looks like a link
+            clip = self.root.clipboard_get()
+            if design_url_from(clip):
+                url.set(clip.strip())
+        except tk.TclError:
+            pass
+        row = ttk.Frame(f)
+        row.pack(fill="x", pady=(4, 10))
+        entry = ttk.Entry(row, textvariable=url, width=70)
+        entry.pack(side="left", fill="x", expand=True)
+        entry.focus_set()
+
+        st = self.settings
+        ttk.Label(f, text=f"Or pick one from your repo ({st['repo']}):").pack(anchor="w")
+        lb = tk.Listbox(f, height=10, activestyle="dotbox")
+        lb.pack(fill="both", expand=True, pady=(4, 0))
+        note = ttk.Label(f, text="", foreground="#777")
+        note.pack(anchor="w", pady=(4, 0))
+        found = {}
+
+        def refresh():
+            lb.delete(0, "end")
+            found.clear()
+            note.config(text="Loading list...")
+            win.update()
+            try:
+                api = f"https://api.github.com/repos/{st['repo']}/contents/designs?ref={st['branch']}"
+                items = json.loads(http_get(api, {"Accept": "application/vnd.github+json"}))
+                for it in sorted(items, key=lambda i: i.get("name", "").lower()):
+                    n = it.get("name", "")
+                    if n.endswith(".txt") and not n.startswith("_"):
+                        found[n[:-4]] = it.get("download_url")
+                        lb.insert("end", n[:-4])
+                note.config(text=f"{len(found)} designs. Double-click one to open it.")
+            except Exception as ex:
+                note.config(text=f"Couldn't list the repo: {ex}")
+
+        def load(link, name_hint=None):
+            if not link:
+                messagebox.showerror("Open from URL", "That doesn't look like a link.", parent=win)
+                return
+            try:
+                text = http_get(link + ("&" if "?" in link else "?") + f"nocache={int(time.time())}")
+                if not text.lstrip().startswith("minor-design"):
+                    raise ValueError("that link isn't a minor design file")
+                d = Design.from_text(text)
+            except Exception as ex:
+                messagebox.showerror("Open from URL", f"Couldn't open it:\n{ex}", parent=win)
+                return
+            self.snapshot()
+            self.d = d
+            self.layer = 0
+            self.vL.set(d.L); self.vW.set(d.W); self.vH.set(d.H)
+            name = name_hint or os.path.splitext(os.path.basename(link.split("?")[0]))[0] or "downloaded"
+            self.name.set(name)
+            self.rebuild_grid()
+            self.status.config(text=f"Opened '{name}' from the web into tab {self.cur_slot + 1}.",
+                               foreground="#3a7")
+            win.destroy()
+
+        def load_pick(event=None):
+            sel = lb.curselection()
+            if sel:
+                n = lb.get(sel[0])
+                load(found.get(n), n)
+
+        lb.bind("<Double-Button-1>", load_pick)
+        ttk.Button(row, text="Open", command=lambda: load(design_url_from(url.get()))).pack(side="left", padx=(6, 0))
+        entry.bind("<Return>", lambda e: load(design_url_from(url.get())))
+        btns = ttk.Frame(f)
+        btns.pack(fill="x", pady=(8, 0))
+        ttk.Button(btns, text="Refresh list", command=refresh).pack(side="left")
+        ttk.Button(btns, text="Open selected", command=load_pick).pack(side="left", padx=6)
+        ttk.Button(btns, text="Close", command=win.destroy).pack(side="right")
+        ttk.Label(f, text="It opens in the current tab (Undo brings back what was there).",
+                  foreground="#777").pack(anchor="w", pady=(6, 0))
+        win.after(100, refresh)
 
     # ---- shapes through layers -----------------------------------------
     LAYER_SHAPES = ["Rectangle", "Circle / oval", "Ring (hollow circle)", "Walls (hollow rectangle)",

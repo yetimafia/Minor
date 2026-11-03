@@ -53,7 +53,11 @@ Without the datapack, the turtle notices the trapdoor didn't open, leaves the re
 
 ## The designer (on your PC)
 
-Download `designer.py`, or clone the repo, and run:
+Download the designer straight from this link (right-click, then *Save link as*):
+
+**https://raw.githubusercontent.com/yetimafia/Minor/main/designer.py**
+
+Or clone the repo. Then run:
 
 ```
 python designer.py
@@ -64,6 +68,15 @@ You only need Python 3. On Windows, get it from python.org; tkinter is included.
 ### Tabs (auto-saved)
 
 The designer has **5 tabs** across the top, and each one holds its own design. Everything is saved automatically a couple of seconds after each change, when you switch tabs, and when you close the designer. All 5 tabs come back next time you open it, and after **Update designer**. *New in this tab* starts a blank design in the current tab. The tabs are stored in `designs/_tabs/` on your PC; they don't get uploaded.
+
+### Opening designs from a link
+
+**Open from URL...** (next to *Open...*) loads a design from the web into the current tab. You can paste:
+- a raw link (`https://raw.githubusercontent.com/.../designs/name.txt`)
+- a normal GitHub file link (`https://github.com/.../blob/main/designs/name.txt`)
+- the whole turtle command from *Copy turtle command*
+
+It also lists every design in your repo, so you can double-click one to open it. If you copied a link before opening the window, it's filled in for you.
 
 ### Drawing
 
