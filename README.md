@@ -52,7 +52,12 @@ You only need Python 3. On Windows, get it from python.org; tkinter is included.
 - Tools: dig pen, eraser (right-click always erases), torch pen, rectangles, and *Set turtle start*. The green **S** is the start and the brown **C** is the chest.
 - Shape buttons: box, sphere, dome, cylinder, and arch tunnel. *Copy to ALL layers above* turns a floor plan into a 3D room.
 - *Auto place torches* puts torches on the floor every N blocks.
+- **Move the turtle:** drag the green **S**, or use the arrows in *Turtle start*. ▲▼◀▶ move it forward, back, left and right, and *Up*/*Down* move it between layers. The chest always goes right behind it.
 - The bottom bar shows block count, fuel needed, and warnings.
+
+### Updating the designer
+
+Click **⟳ Update designer**. It downloads the newest version, closes, and reopens with your current design still open. The old version is kept as `designer.py.bak`.
 
 ### Sending it to the turtle
 

@@ -19,6 +19,8 @@ runs git add / commit / push, so on the turtle you can then just type:
 """
 
 import os
+import subprocess
+import sys
 import base64
 import json
 import ssl
@@ -268,6 +270,21 @@ class App:
 
         ttk.Button(side, text="Undo  (Ctrl+Z)", command=self.undo).pack(fill="x", pady=(0, 6))
 
+        tp = ttk.LabelFrame(side, text="Turtle start (drag the S)", padding=6)
+        tp.pack(fill="x", pady=(0, 6))
+        pad = ttk.Frame(tp)
+        pad.pack()
+        arrows = (("▲", 0, 1, (1, 0, 0)), ("◀", 1, 0, (0, 0, -1)), ("▶", 1, 2, (0, 0, 1)),
+                  ("▼", 2, 1, (-1, 0, 0)))
+        for text, r, c, delta in arrows:
+            ttk.Button(pad, text=text, width=3,
+                       command=lambda d=delta: self.move_start(*d)).grid(row=r, column=c)
+        ttk.Button(pad, text="Up", width=4, command=lambda: self.move_start(0, 1, 0)).grid(row=0, column=3, padx=(8, 0))
+        ttk.Button(pad, text="Down", width=4, command=lambda: self.move_start(0, -1, 0)).grid(row=2, column=3, padx=(8, 0))
+        self.start_label = ttk.Label(tp, text="", foreground="#777")
+        self.start_label.pack(pady=(4, 0))
+        ttk.Button(tp, text="Go to turtle's layer", command=self.goto_start_layer).pack(fill="x")
+
         right = ttk.Frame(body)
         right.pack(side="left", fill="both", expand=True)
         ttk.Label(right, text="▲ turtle faces this way ▲", foreground="#777").pack()
@@ -298,6 +315,7 @@ class App:
         ttk.Button(gh, text="2. Copy turtle command", command=self.copy_command).pack(side="left", padx=6)
         ttk.Entry(gh, textvariable=self.command, state="readonly").pack(side="left", fill="x", expand=True)
         ttk.Button(gh, text="GitHub settings", command=self.settings_dialog).pack(side="left", padx=(6, 0))
+        ttk.Button(gh, text="⟳ Update designer", command=self.update_designer).pack(side="left", padx=(6, 0))
         self.status = ttk.Label(self.root, text="", foreground="#3a7", padding=(8, 0, 8, 6))
         self.status.pack(fill="x")
         self.name.trace_add("write", lambda *a: self.refresh_command())
@@ -341,6 +359,8 @@ class App:
                 self.canvas.create_text(px + c / 2, py + c / 2, text="C", fill="white",
                                         tags="marker", font=("TkDefaultFont", max(7, c // 2)))
         self.layer_label.config(text=f"{y + 1} of {d.H}")
+        if hasattr(self, "start_label"):
+            self.start_label.config(text=f"forward {sx}, right {sz}, layer {sy + 1}")
         self.update_stats()
 
     def mark(self, x, z, text, color):
@@ -390,7 +410,9 @@ class App:
             return
         self.snapshot()
         tool = self.tool.get()
-        if tool == "start" and not erase:
+        sx, sy, sz = self.d.start
+        if not erase and (tool == "start" or (sy == self.layer and p == (sx, sz))):
+            self.dragging_start = True
             self.d.start = (p[0], self.layer, p[1])
             self.redraw()
             return
@@ -404,6 +426,11 @@ class App:
         if not p:
             return
         tool = self.tool.get()
+        if getattr(self, "dragging_start", False) and not erase:
+            if (p[0], self.layer, p[1]) != self.d.start:
+                self.d.start = (p[0], self.layer, p[1])
+                self.redraw()
+            return
         if tool in ("rect", "rectkeep") and not erase and self.drag_start:
             c = self.cell
             (x0, z0), (x1, z1) = self.drag_start, p
@@ -417,6 +444,10 @@ class App:
         self.paint(*p, self.pen_value(erase))
 
     def on_release(self, e, erase):
+        if getattr(self, "dragging_start", False):
+            self.dragging_start = False
+            self.redraw()
+            return
         tool = self.tool.get()
         if tool in ("rect", "rectkeep") and not erase and self.drag_start:
             p = self.cell_at(e) or self.drag_start
@@ -601,6 +632,95 @@ class App:
         self.layer = 0
         self.rebuild_grid()
 
+    # ---- turtle start -------------------------------------------------
+    def move_start(self, dx, dy, dz):
+        d = self.d
+        sx, sy, sz = d.start
+        nx, ny, nz = sx + dx, sy + dy, sz + dz
+        if not (0 <= nx < d.L and 0 <= ny < d.H and 0 <= nz < d.W):
+            self.status.config(text="The turtle has to start inside the design. Make the design "
+                                    "bigger to move it further.", foreground="#c80")
+            return
+        self.snapshot()
+        d.start = (nx, ny, nz)
+        self.layer = ny  # follow the turtle between layers
+        self.status.config(text="", foreground="#777")
+        self.redraw()
+
+    def goto_start_layer(self):
+        self.layer = self.d.start[1]
+        self.redraw()
+
+    # ---- self update --------------------------------------------------
+    def update_designer(self):
+        st = self.settings
+        url = f"https://api.github.com/repos/{st['repo']}/contents/designer.py?ref={st['branch']}"
+        headers = {"Accept": "application/vnd.github.raw", "User-Agent": "minor-designer"}
+        if st.get("token"):
+            headers["Authorization"] = "Bearer " + st["token"]
+        self.status.config(text="Checking for updates...", foreground="#777")
+        self.root.update()
+        try:
+            ctx = ssl.create_default_context()
+            try:
+                import certifi
+                ctx = ssl.create_default_context(cafile=certifi.where())
+            except ImportError:
+                pass
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=30, context=ctx) as r:
+                new_code = r.read().decode("utf-8")
+            compile(new_code, "designer.py", "exec")  # make sure it's real Python
+        except Exception as ex:
+            self.status.config(text="", foreground="#777")
+            messagebox.showerror("Update", f"Couldn't download the update:\n{ex}")
+            return
+
+        me = os.path.abspath(__file__)
+        with open(me, encoding="utf-8") as f:
+            old_code = f.read()
+        if new_code.replace("\r\n", "\n") == old_code.replace("\r\n", "\n"):
+            self.status.config(text="You already have the newest designer.", foreground="#3a7")
+            return
+        if not messagebox.askyesno("Update", "A new version is ready. Restart the designer now?\n\n"
+                                             "Your current design will be kept open."):
+            self.status.config(text="", foreground="#777")
+            return
+
+        # keep a backup, then swap in the new file
+        with open(me + ".bak", "w", encoding="utf-8", newline="") as f:
+            f.write(old_code)
+        with open(me, "w", encoding="utf-8", newline="\n") as f:
+            f.write(new_code)
+
+        # save what's open so the new version can load it
+        os.makedirs(DESIGN_DIR, exist_ok=True)
+        resume = os.path.join(DESIGN_DIR, "_resume.txt")
+        with open(resume, "w", newline="\n") as f:
+            f.write(self.d.to_text())
+        meta = json.dumps({"name": self.name.get(), "layer": self.layer})
+
+        subprocess.Popen([sys.executable, me, "--resume", resume, meta], cwd=HERE)
+        self.root.destroy()
+
+    def resume_from(self, path, meta):
+        try:
+            with open(path) as f:
+                d = Design.from_text(f.read())
+            info = json.loads(meta) if meta else {}
+        except Exception:
+            return
+        self.d = d
+        self.vL.set(d.L); self.vW.set(d.W); self.vH.set(d.H)
+        self.name.set(info.get("name", "myroom"))
+        self.layer = max(0, min(d.H - 1, int(info.get("layer", 0))))
+        self.rebuild_grid()
+        self.status.config(text="Updated to the newest designer!", foreground="#3a7")
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+
     # ---- GitHub -------------------------------------------------------
     def raw_url(self, path, ref=None):
         st = self.settings
@@ -711,7 +831,19 @@ class App:
 
 def main():
     root = tk.Tk()
-    App(root)
+    app = App(root)
+    args = sys.argv[1:]
+    if len(args) >= 2 and args[0] == "--resume":
+        app.resume_from(args[1], args[2] if len(args) > 2 else "")
+    elif args and os.path.isfile(args[0]):
+        try:
+            with open(args[0]) as f:
+                app.d = Design.from_text(f.read())
+            app.vL.set(app.d.L); app.vW.set(app.d.W); app.vH.set(app.d.H)
+            app.name.set(os.path.splitext(os.path.basename(args[0]))[0])
+            app.rebuild_grid()
+        except Exception:
+            pass
     root.mainloop()
 
 

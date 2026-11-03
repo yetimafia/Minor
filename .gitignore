@@ -1,3 +1,5 @@
 __pycache__/
 *.pyc
 minor_settings.json
+*.bak
+designs/_resume.txt
