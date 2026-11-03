@@ -57,6 +57,17 @@ You only need Python 3. On Windows, get it from python.org; tkinter is included.
 - **Move the turtle:** drag the green **S**, or use the arrows in *Turtle start*. ▲▼◀▶ move it forward, back, left and right, and *Up*/*Down* move it between layers. The chest always goes right behind it.
 - The bottom bar shows block count, fuel needed, and warnings.
 
+### 3D view
+
+Click **3D view** in the top bar (or press **Ctrl+D**). Your design opens in a Chrome tab as a 3D model, made with three.js r149.
+
+- **Hollowed out:** solid rock with your mined space carved out. Cave walls are lighter, so the shape stands out, and it opens cut in half so you can see inside.
+- **Blocks to mine:** only the blocks the turtle will dig.
+- **Show up to layer** and **Slice from turtle side** cut the model open. **See-through** shows torches inside.
+- Left-drag rotates, right-drag moves, and scrolling zooms. *Top* view matches the designer grid.
+
+It needs an internet connection to load three.js. If Chrome isn't installed, it opens in your default browser.
+
 ### Updating the designer
 
 Click **⟳ Update designer**. It downloads the newest version, closes, and reopens with your current design still open. The old version is kept as `designer.py.bak`.
