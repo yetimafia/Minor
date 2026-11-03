@@ -11,7 +11,7 @@
 -- start marker is, facing "up" on the designer's grid.
 -- Put a CHEST directly BEHIND the turtle. Put fuel and torches in the turtle.
 
-local REPO   = "yetimafia/minor"   -- GitHub "user/repo"
+local REPO   = "yetimafia/Minor"   -- GitHub "user/repo"
 local BRANCH = "main"
 local BASE   = "https://raw.githubusercontent.com/" .. REPO .. "/" .. BRANCH .. "/"
 local MAX    = 64

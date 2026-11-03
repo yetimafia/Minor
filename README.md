@@ -5,7 +5,7 @@ A turtle program for CC: Tweaked (ComputerCraft) that digs out rooms and custom 
 ## Install on a turtle
 
 ```
-wget run https://raw.githubusercontent.com/yetimafia/minor/main/install.lua
+wget run https://raw.githubusercontent.com/yetimafia/Minor/main/install.lua
 ```
 
 Update later with `minor update`.

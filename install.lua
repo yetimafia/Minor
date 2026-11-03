@@ -1,8 +1,8 @@
 -- Installs (or updates) "minor" on a turtle, then optionally runs it.
---   wget run https://raw.githubusercontent.com/yetimafia/minor/main/install.lua
---   wget run https://raw.githubusercontent.com/yetimafia/minor/main/install.lua <design or url>
+--   wget run https://raw.githubusercontent.com/yetimafia/Minor/main/install.lua
+--   wget run https://raw.githubusercontent.com/yetimafia/Minor/main/install.lua <design or url>
 -- The designer's "Copy turtle command" button gives you the second form.
-local URL = "https://raw.githubusercontent.com/yetimafia/minor/main/minor.lua"
+local URL = "https://raw.githubusercontent.com/yetimafia/Minor/main/minor.lua"
 local args = { ... }
 
 if not http then

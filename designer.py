@@ -33,7 +33,7 @@ KEEP, DIG, TORCH = 0, 1, 2
 HERE = os.path.dirname(os.path.abspath(__file__))
 DESIGN_DIR = os.path.join(HERE, "designs")
 SETTINGS_FILE = os.path.join(HERE, "minor_settings.json")
-DEFAULT_SETTINGS = {"repo": "yetimafia/minor", "branch": "main", "token": ""}
+DEFAULT_SETTINGS = {"repo": "yetimafia/Minor", "branch": "main", "token": ""}
 
 
 def load_settings():
