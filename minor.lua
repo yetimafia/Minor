@@ -38,13 +38,27 @@ local function waitForUser(msg)
   os.pullEvent("key")
 end
 
-local function download(path, dest, isUrl)
-  if not http then return false, "HTTP is turned off in the server config" end
-  local url = isUrl and path or (BASE .. path .. "?t=" .. os.epoch("utc"))
-  local h, err = http.get(url)
-  if not h then return false, err or "not found" end
+-- Files from this repo come through GitHub's API first: it always has the
+-- newest version, while raw.githubusercontent.com can be up to 5 minutes old.
+local function fetch(url, headers)
+  local h, err = http.get(url, headers)
+  if not h then return nil, err or "not found" end
   local data = h.readAll()
   h.close()
+  return data
+end
+
+local function download(path, dest, isUrl)
+  if not http then return false, "HTTP is turned off in the server config" end
+  local data, err
+  if isUrl then
+    data, err = fetch(path)
+  else
+    data = fetch("https://api.github.com/repos/" .. REPO .. "/contents/" .. path .. "?ref=" .. BRANCH,
+                 { ["Accept"] = "application/vnd.github.raw", ["User-Agent"] = "minor-turtle" })
+    if not data then data, err = fetch(BASE .. path .. "?t=" .. os.epoch("utc")) end
+  end
+  if not data then return false, err end
   local f = fs.open(dest, "w")
   f.write(data)
   f.close()
