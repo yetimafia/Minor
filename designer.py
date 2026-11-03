@@ -147,6 +147,7 @@ class Design:
         self.L, self.W, self.H = length, width, height
         self.grid = [[[KEEP] * width for _ in range(length)] for _ in range(height)]
         self.start = (0, 0, 0)  # x (forward), y (up), z (right)
+        self.open_traps = True  # turtle clicks trapdoors open after placing them
 
     def resize(self, length, width, height):
         old = self.grid
@@ -288,6 +289,8 @@ class Design:
         out = ["minor-design 1",
                f"size {self.L} {self.W} {self.H}",
                "start {} {} {}".format(*self.start)]
+        if self.open_traps:
+            out.append("trapdoors open")
         chars = {KEEP: ".", DIG: "#", TORCH: "T", WATER: "W", TRAP: "D"}
         for y in range(self.H):
             out.append(f"layer {y}")
@@ -317,6 +320,9 @@ class Design:
             elif line.startswith("start ") and d:
                 sx, sy, sz = map(int, line.split()[1:4])
                 d.start = (sx, sy, sz)
+                d.open_traps = False  # only on if the file says so
+            elif line.startswith("trapdoors open") and d:
+                d.open_traps = True
             elif line.startswith("layer ") and d:
                 y, x = int(line.split()[1]), 0
             elif d and y >= 0 and x < d.L and line:
@@ -436,6 +442,14 @@ class App:
         ttk.Button(tor, text="Auto place torches", command=self.auto_torches).pack(fill="x", pady=(4, 0))
         ttk.Button(tor, text="Remove all torches", command=self.clear_torches).pack(fill="x")
 
+        trp = ttk.LabelFrame(side_b, text="Trapdoors", padding=6)
+        trp.pack(fill="x", pady=(0, 6))
+        self.open_traps = tk.BooleanVar(value=True)
+        ttk.Checkbutton(trp, text="Open them after placing", variable=self.open_traps,
+                        command=self.set_open_traps).pack(anchor="w")
+        ttk.Label(trp, text="Needs 1 stick in the turtle and\nthe datapack (see README)",
+                  foreground="#777", justify="left").pack(anchor="w")
+
         ttk.Button(side_b, text="Undo  (Ctrl+Z)", command=self.undo).pack(fill="x", pady=(0, 6))
 
         tp = ttk.LabelFrame(side_a, text="Turtle start (drag the S)", padding=6)
@@ -494,6 +508,7 @@ class App:
 
     # ---- grid drawing -------------------------------------------------
     def rebuild_grid(self):
+        self.sync_from_design()
         d = self.d
         self.cell = max(8, min(28, 720 // max(d.L, d.W)))
         c = self.cell
@@ -1066,6 +1081,14 @@ class App:
                         d.grid[y][x][z] = KEEP
                         changed += 1
         return changed
+
+    def set_open_traps(self):
+        self.d.open_traps = bool(self.open_traps.get())
+
+    def sync_from_design(self):
+        """Update checkboxes after a different design was loaded."""
+        if hasattr(self, "open_traps"):
+            self.open_traps.set(self.d.open_traps)
 
     # ---- 3D view --------------------------------------------------------
     def view_3d(self):

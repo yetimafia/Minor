@@ -79,6 +79,7 @@ end
 -- st values: 0 leave alone, 1 needs digging, 2 open, 3 torch placed, 4 chest
 local L, W, H
 local st, torchAt, waterAt, trapAt = {}, {}, {}, {}
+local openTraps = false -- design says: open trapdoors after placing them
 local sx, sy, sz = 0, 0, 0 -- start position
 local todo, tunnels = 0, 0
 
@@ -129,6 +130,8 @@ local function loadDesign(path)
     elseif line:match("^start ") then
       local p, q, r = line:match("^start (%d+) (%d+) (%d+)")
       sx, sy, sz = tonumber(p), tonumber(q), tonumber(r)
+    elseif line:match("^trapdoors open") then
+      openTraps = true
     elseif line:match("^layer ") then
       y = tonumber(line:match("^layer (%d+)")); x = 0
     elseif y >= 0 and x < L and line ~= "" then
@@ -348,8 +351,9 @@ local KINDS = {
   torch    = function(n) return n:find("torch") ~= nil end,
   water    = function(n) return n:find("water_bucket") ~= nil end,
   trapdoor = function(n) return n:find("trapdoor") ~= nil end,
+  stick    = function(n) return n == "minecraft:stick" end, -- used to click trapdoors open
 }
-local KIND_NAMES = { torch = "torches", water = "water buckets", trapdoor = "trapdoors" }
+local KIND_NAMES = { torch = "torches", water = "water buckets", trapdoor = "trapdoors", stick = "sticks" }
 
 local function kindOf(i)
   local d = turtle.getItemDetail(i)
@@ -474,6 +478,9 @@ for _ in pairs(waterAt) do waterCount = waterCount + 1 end
 for _ in pairs(trapAt) do trapCount = trapCount + 1 end
 if waterCount + trapCount > 0 then
   print(("At the end: %d trapdoors, %d water buckets"):format(trapCount, waterCount))
+end
+if trapCount > 0 and openTraps then
+  print("Trapdoors get opened: put 1 stick in me")
 end
 print(("Size %d x %d x %d, %d blocks to dig"):format(L, W, H, todo))
 if torchCount > 0 then print(torchCount .. " torches - I'll light the room first") end
@@ -615,6 +622,31 @@ end
 -- Placed last, once everything is dug: trapdoors first, then water (so
 -- flowing water can't get in the way). The turtle stands next to the spot
 -- (above it if it can) and places into it.
+-- Opening trapdoors: the turtle "clicks" the trapdoor with a stick. Plain
+-- CC: Tweaked doesn't allow turtles to click trapdoors, so this only works
+-- with the minor datapack installed (see README). We check it really opened.
+local openWorks = nil            -- nil = not tried yet, false = turtles can't open them here
+local trapsOpened, noStick = 0, false
+
+local function tryOpen(how)
+  if openWorks == false then return end
+  local s = itemSlot("stick")
+  if not s then noStick = true; return end
+  turtle.select(s)
+  local look
+  if how == "down" then turtle.placeDown(); look = turtle.inspectDown
+  elseif how == "up" then turtle.placeUp(); look = turtle.inspectUp
+  else turtle.place(); look = turtle.inspect end -- already facing it
+  turtle.select(1)
+  local ok, data = look()
+  if ok and data.state and data.state.open then
+    trapsOpened = trapsOpened + 1
+    openWorks = true
+  elseif openWorks == nil then
+    openWorks = false
+  end
+end
+
 local function placeItems(spots, kind)
   local total = 0
   for _ in pairs(spots) do total = total + 1 end
@@ -650,7 +682,10 @@ local function placeItems(spots, kind)
     left = left - 1
     if ok then
       done = done + 1
-      if kind == "trapdoor" then st[si] = 5 end -- solid now: walk around it
+      if kind == "trapdoor" then
+        st[si] = 5 -- solid now: walk around it
+        if openTraps then tryOpen(h) end
+      end
     end
     term.setCursorPos(1, 1); term.clearLine()
     write(("Placing %s: %d of %d"):format(KIND_NAMES[kind], done, total))
@@ -673,6 +708,14 @@ local torchesTotal = lit + placed
 if torchesTotal > 0 then print("Placed " .. torchesTotal .. " torches.") end
 if trapsPlaced > 0 then print("Placed " .. trapsPlaced .. " trapdoors.") end
 if waterPlaced > 0 then print("Placed " .. waterPlaced .. " water buckets.") end
+if openTraps and trapsPlaced > 0 then
+  if trapsOpened > 0 then print("Opened " .. trapsOpened .. " trapdoors.")
+  elseif noStick then print("No stick, so trapdoors were left closed.")
+  elseif openWorks == false then
+    print("Couldn't open trapdoors - this world needs")
+    print("the minor datapack (see the README).")
+  end
+end
 if trapsLeft + waterLeft > 0 then
   print(("Couldn't reach %d trapdoor/water spots."):format(trapsLeft + waterLeft))
 end

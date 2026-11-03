@@ -36,6 +36,20 @@ The turtle downloads the newest version of the design from this repo each time. 
 - If your design has **trapdoors** or **water**, put trapdoors and water buckets in the turtle (one bucket per water spot). They're placed **at the very end**, after everything is dug: trapdoors first, then water. The turtle never burns or unloads them, and comes home to ask if it runs out.
 - Put **torches** in the turtle. It **lights the room first**: it digs a path to each torch spot and places the torch, then digs out everything else, so mobs can't spawn while it works. It keeps torches when it empties into the chest, and comes home to ask for more if it runs out. Add `notorch` to skip torches: `minor box 20 20 5 notorch`.
 
+## Opening trapdoors (datapack)
+
+When **Open them after placing** is checked in the designer (it's on by default), the turtle clicks each trapdoor open with a **stick** right after placing it. Put 1 stick in the turtle.
+
+Plain CC: Tweaked doesn't let turtles click trapdoors, so the world needs a tiny datapack that adds wooden trapdoors to CC's list of blocks turtles may use:
+
+1. Download [`datapack/minor_trapdoors.zip`](datapack/minor_trapdoors.zip).
+2. Put the zip, without unzipping it, in your world's `datapacks` folder:
+   - Singleplayer: `.minecraft/saves/<your world>/datapacks/`
+   - Server: `<server>/world/datapacks/`
+3. Run `/reload`, or reopen the world.
+
+Without the datapack, the turtle notices the trapdoor didn't open, leaves the rest closed, and tells you at the end. Iron trapdoors can't be opened by clicking, even by players.
+
 ## The designer (on your PC)
 
 Download `designer.py`, or clone the repo, and run:
